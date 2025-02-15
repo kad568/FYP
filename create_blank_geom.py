@@ -27,7 +27,7 @@ from pathlib import Path
 import os
 
 
-SCRIPT_PARENT_PATH = Path(os.getcwd())
+SCRIPT_PARENT_PATH = "D:\FYP_code\FYP"
 
 
 @dataclass
@@ -262,8 +262,9 @@ def main():
 
     input_dex = InputeDex()
 
-    simulation_output_dir_path = SCRIPT_PARENT_PATH / "pyhton_script_output"
-    input_dex.simulation_object_path =  str(simulation_output_dir_path / "test_deep_drawing.cae")
+    simulation_output_dir_path = SCRIPT_PARENT_PATH
+
+    input_dex.simulation_object_path =  f"{simulation_output_dir_path}/test_deep_drawing.cae"
 
     input_dex.all_part_rotation = 90
 
@@ -394,8 +395,8 @@ def main():
         185.8061584, 2.95), (185.946568, 2.96), (186.0866341, 2.97))
     
     # save simulation inputs
-    input_dex_output_path = simulation_output_dir_path / "inputs.json"
-    with open(str(input_dex_output_path), "w") as file:
+    input_dex_output_path = f"{simulation_output_dir_path}/inputs.json"
+    with open(input_dex_output_path, "w") as file:
         dump(asdict(input_dex), file)
 
     # create blank
