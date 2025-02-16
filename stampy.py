@@ -21,14 +21,11 @@ import displayGroupOdbToolset as dgo
 import connectorBehavior
 
 # other imports
-from dataclasses import dataclass, field, asdict, make_dataclass
-from json import load, dump
-from pathlib import Path
-import os
+from dataclasses import dataclass, asdict
+from json import dump
 
 
 SCRIPT_PARENT_PATH = "D:\FYP_code\FYP"
-
 
 @dataclass
 class InputeDex:
@@ -37,23 +34,16 @@ class InputeDex:
     all_part_rotation: int = 90 # degrees
 
     # blank
-    blank_part_name: str = "blank"
-    blank_top_surface_name: str = "blank_top_surface"
-    blank_bottom_surface_name: str = "blank_bottom_surface"
     blank_radius: float = None # mm
     blank_thickness: float = None # mm
 
     # die
-    die_part_name: str = "die"
-    die_surface_name: str = "die_surface"
     die_height: float = None # mm
     die_profile_radius: float = None # mm
     die_min_radius: float = None # mm
     die_max_radius: float = None # mm
 
     # blank holder
-    blank_holder_part_name: str = "blank_holder"
-    blank_holder_surface_name: str = "blank_holder_surface"
     blank_holder_height: float = None # mm
     blank_holder_profile_radius: float = None # mm
     blank_holder_min_radius: float = None # mm
@@ -61,8 +51,6 @@ class InputeDex:
     blank_holder_die_gap: float = None # mm, minimum blank thickness to prevent overlap
 
     # punch
-    punch_part_name: str = "punch"
-    punch_surface_name: str = "punch_surface"
     punch_depth: float = None # mm
     punch_profile_radius: float = None # mm
     punch_min_radius: float = None # mm
@@ -72,9 +60,9 @@ class InputeDex:
     density: float = None # kg/mm^3
     youngs_modulus: float = None # MPa
     posissons_ratio: float = None 
-    plastic_material_data: tuple = None # (MPa, ...)
+    plastic_material_data: tuple = None # (stress [MPa], strain)
 
-def create_blank_part(blank_part_name, blank_radius, blank_thickness, part_rotation):
+def create_blank_part(blank_radius, blank_thickness, part_rotation):
 
     s1 = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
         sheetSize=200.0)
@@ -84,29 +72,29 @@ def create_blank_part(blank_part_name, blank_radius, blank_thickness, part_rotat
     s1.FixedConstraint(entity=g[2])
     s1.Line(point1=(0.0, blank_thickness/2), point2=(blank_radius, blank_thickness/2))
     s1.HorizontalConstraint(entity=g[3], addUndoState=False)
-    p = mdb.models['Model-1'].Part(name=blank_part_name, dimensionality=THREE_D, 
+    p = mdb.models['Model-1'].Part(name="blank", dimensionality=THREE_D, 
         type=DEFORMABLE_BODY)
-    p = mdb.models['Model-1'].parts[blank_part_name]
+    p = mdb.models['Model-1'].parts["blank"]
     p.BaseShellRevolve(sketch=s1, angle=part_rotation, flipRevolveDirection=OFF)
     s1.unsetPrimaryObject()
-    p = mdb.models['Model-1'].parts[blank_part_name]
+    p = mdb.models['Model-1'].parts["blank"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models['Model-1'].sketches['__profile__']
 
 
-def create_blank_surfaces(blank_part_name, blank_top_surface_name, blank_bottom_surface_name):
+def create_blank_surfaces():
 
-    p = mdb.models['Model-1'].parts[blank_part_name]
+    p = mdb.models['Model-1'].parts["blank"]
     s = p.faces
     side2Faces = s.getSequenceFromMask(mask=('[#1 ]', ), )
-    p.Surface(side2Faces=side2Faces, name=blank_top_surface_name)
-    p = mdb.models['Model-1'].parts[blank_part_name]
+    p.Surface(side2Faces=side2Faces, name="blank_top_surface")
+    p = mdb.models['Model-1'].parts["blank"]
     s = p.faces
     side1Faces = s.getSequenceFromMask(mask=('[#1 ]', ), )
-    p.Surface(side1Faces=side1Faces, name=blank_bottom_surface_name)
+    p.Surface(side1Faces=side1Faces, name="blank_bottom_surface")
 
 
-def create_die_part(die_part_name, die_height, die_profile_radius, die_min_radius, die_max_radius, part_rotation):
+def create_die_part(die_height, die_profile_radius, die_min_radius, die_max_radius, part_rotation):
 
     s = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
         sheetSize=200.0)
@@ -122,34 +110,34 @@ def create_die_part(die_part_name, die_height, die_profile_radius, die_min_radiu
     s.FilletByRadius(radius=die_profile_radius, curve1=g[3], nearPoint1=(22.0425605773926, 
         -5.69356918334961), curve2=g[4], nearPoint2=(27.7851066589355, 
         -0.132408142089844))
-    p = mdb.models['Model-1'].Part(name=die_part_name, dimensionality=THREE_D, 
+    p = mdb.models['Model-1'].Part(name="die", dimensionality=THREE_D, 
         type=DISCRETE_RIGID_SURFACE)
-    p = mdb.models['Model-1'].parts[die_part_name]
+    p = mdb.models['Model-1'].parts["die"]
     p.BaseShellRevolve(sketch=s, angle=part_rotation, flipRevolveDirection=OFF)
     s.unsetPrimaryObject()
-    p = mdb.models['Model-1'].parts[die_part_name]
+    p = mdb.models['Model-1'].parts["die"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models['Model-1'].sketches['__profile__']
 
 
-def create_die_surface(die_part_name, die_surface_name):
+def create_die_surface():
 
-    p1 = mdb.models['Model-1'].parts[die_part_name]
+    p1 = mdb.models['Model-1'].parts["die"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
-    p = mdb.models['Model-1'].parts[die_part_name]
+    p = mdb.models['Model-1'].parts["die"]
     s = p.faces
     side2Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
-    p.Surface(side2Faces=side2Faces, name=die_surface_name)
+    p.Surface(side2Faces=side2Faces, name="die_surface")
 
 
-def die_ref_point(die_part_name):
+def die_ref_point():
 
-    p = mdb.models['Model-1'].parts[die_part_name]
+    p = mdb.models['Model-1'].parts["die"]
     v1, e, d1, n = p.vertices, p.edges, p.datums, p.nodes
     p.ReferencePoint(point=v1[6])
 
 
-def create_blank_holder(blank_holder_part_name, blank_holder_height, blank_holder_profile_radius, blank_holder_min_radius, blank_holder_max_radius, blank_holder_die_gap, part_rotation):
+def create_blank_holder(blank_holder_height, blank_holder_profile_radius, blank_holder_min_radius, blank_holder_max_radius, blank_holder_die_gap, part_rotation):
 
     s1 = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
         sheetSize=200.0)
@@ -165,35 +153,35 @@ def create_blank_holder(blank_holder_part_name, blank_holder_height, blank_holde
     s1.FilletByRadius(radius=blank_holder_profile_radius, curve1=g[3], nearPoint1=(21.9542121887207, 
         5.60529708862305), curve2=g[4], nearPoint2=(27.6084175109863, 
         1.36822128295898))
-    p = mdb.models['Model-1'].Part(name=blank_holder_part_name, dimensionality=THREE_D, 
+    p = mdb.models['Model-1'].Part(name="blank_holder", dimensionality=THREE_D, 
         type=DISCRETE_RIGID_SURFACE)
-    p = mdb.models['Model-1'].parts[blank_holder_part_name]
+    p = mdb.models['Model-1'].parts["blank_holder"]
     p.BaseShellRevolve(sketch=s1, angle=part_rotation, flipRevolveDirection=OFF)
     s1.unsetPrimaryObject()
-    p = mdb.models['Model-1'].parts[blank_holder_part_name]
+    p = mdb.models['Model-1'].parts["blank_holder"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models['Model-1'].sketches['__profile__']
 
 
-def create_blank_holder_surface(blank_holder_part_name, blank_holder_surface_name):
+def create_blank_holder_surface():
 
-    p1 = mdb.models['Model-1'].parts[blank_holder_part_name]
+    p1 = mdb.models['Model-1'].parts["blank_holder"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
-    p = mdb.models['Model-1'].parts[blank_holder_part_name]
+    p = mdb.models['Model-1'].parts["blank_holder"]
     s = p.faces
     side1Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
-    p.Surface(side1Faces=side1Faces, name=blank_holder_surface_name)
+    p.Surface(side1Faces=side1Faces, name="blank_holder_surface")
 
 
 
-def blank_holder_ref_point(blank_holder_part_name):
+def blank_holder_ref_point():
 
-    p = mdb.models['Model-1'].parts[blank_holder_part_name]
+    p = mdb.models['Model-1'].parts["blank_holder"]
     v2, e1, d2, n1 = p.vertices, p.edges, p.datums, p.nodes
     p.ReferencePoint(point=p.InterestingPoint(edge=e1[1], rule=MIDDLE))
 
 
-def create_punch(punch_part_name, punch_depth, punch_profile_radius, punch_min_radius, blank_thickness, part_rotation):
+def create_punch(punch_depth, punch_profile_radius, punch_min_radius, blank_thickness, part_rotation):
 
     s1 = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
         sheetSize=200.0)
@@ -209,42 +197,42 @@ def create_punch(punch_part_name, punch_depth, punch_profile_radius, punch_min_r
     s1.FilletByRadius(radius=punch_profile_radius, curve1=g[3], nearPoint1=(20.0105857849121, 
         9.13618850708008), curve2=g[4], nearPoint2=(15.7699317932129, 
         1.72130966186523))
-    p = mdb.models['Model-1'].Part(name=punch_part_name, dimensionality=THREE_D, 
+    p = mdb.models['Model-1'].Part(name="punch", dimensionality=THREE_D, 
         type=DISCRETE_RIGID_SURFACE)
-    p = mdb.models['Model-1'].parts[punch_part_name]
+    p = mdb.models['Model-1'].parts["punch"]
     p.BaseShellRevolve(sketch=s1, angle=part_rotation, flipRevolveDirection=OFF)
     s1.unsetPrimaryObject()
-    p = mdb.models['Model-1'].parts[punch_part_name]
+    p = mdb.models['Model-1'].parts["punch"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models['Model-1'].sketches['__profile__']
 
 
-def punch_ref_point(punch_part_name):
+def punch_ref_point():
 
-    p = mdb.models['Model-1'].parts[punch_part_name]
+    p = mdb.models['Model-1'].parts["punch"]
     v1, e, d1, n = p.vertices, p.edges, p.datums, p.nodes
     p.ReferencePoint(point=v1[0])
 
 
-def create_punch_surface(punch_part_name, punch_surface_name):
+def create_punch_surface():
 
-    p = mdb.models['Model-1'].parts[punch_part_name]
+    p = mdb.models['Model-1'].parts["punch"]
     s = p.faces
     side2Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
-    p.Surface(side2Faces=side2Faces, name=punch_surface_name)
+    p.Surface(side2Faces=side2Faces, name="punch_surface")
 
 
-def create_part_assembly(blank_part_name, blank_holder_part_name, die_part_name, punch_part_name):
+def create_part_assembly():
 
     a1 = mdb.models['Model-1'].rootAssembly
-    p = mdb.models['Model-1'].parts[blank_part_name]
-    a1.Instance(name=f'{blank_part_name}-1', part=p, dependent=ON)
-    p = mdb.models['Model-1'].parts[blank_holder_part_name]
-    a1.Instance(name=f'{blank_holder_part_name}-1', part=p, dependent=ON)
-    p = mdb.models['Model-1'].parts[die_part_name]
-    a1.Instance(name=f'{die_part_name}-1', part=p, dependent=ON)
-    p = mdb.models['Model-1'].parts[punch_part_name]
-    a1.Instance(name=f'{punch_part_name}-1', part=p, dependent=ON)
+    p = mdb.models['Model-1'].parts["blank"]
+    a1.Instance(name=f'{"blank"}-1', part=p, dependent=ON)
+    p = mdb.models['Model-1'].parts["blank_holder"]
+    a1.Instance(name=f'{"blank_holder"}-1', part=p, dependent=ON)
+    p = mdb.models['Model-1'].parts["die"]
+    a1.Instance(name=f'{"die"}-1', part=p, dependent=ON)
+    p = mdb.models['Model-1'].parts["punch"]
+    a1.Instance(name=f'{"punch"}-1', part=p, dependent=ON)
 
 
 def create_blank_material(blank_material_name, density, youngs_modulus, posissons_ratio, plastic_material_data):
@@ -260,7 +248,7 @@ def create_blank_material(blank_material_name, density, youngs_modulus, posisson
 
 
 
-def create_interactions():
+def create_surface_interactions():
 
     # create interaction properties
     mdb.models['Model-1'].ContactProperty('die_blank')
@@ -299,6 +287,162 @@ def create_interactions():
         mechanicalConstraint=KINEMATIC, sliding=FINITE, 
         interactionProperty='blank_holder_blank', initialClearance=OMIT, 
         datumAxis=None, clearanceRegion=None)
+
+
+def create_boundary_conditions():
+
+    mdb.models['Model-1'].ExplicitDynamicsStep(name='load', previous='Initial', 
+        timePeriod=0.04, improvedDtMethod=ON)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
+        predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
+    a = mdb.models['Model-1'].rootAssembly
+    e1 = a.instances['blank-1'].edges
+    edges1 = e1.getSequenceFromMask(mask=('[#1 ]', ), )
+    region = a.Set(edges=edges1, name='Set-1')
+    mdb.models['Model-1'].XsymmBC(name='BC-1', createStepName='load', 
+        region=region, localCsys=None)
+    a = mdb.models['Model-1'].rootAssembly
+    e1 = a.instances['blank-1'].edges
+    edges1 = e1.getSequenceFromMask(mask=('[#2 ]', ), )
+    region = a.Set(edges=edges1, name='Set-2')
+    mdb.models['Model-1'].ZsymmBC(name='BC-2', createStepName='load', 
+        region=region, localCsys=None)
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['die-1'].referencePoints
+    refPoints1=(r1[3], )
+    region = a.Set(referencePoints=refPoints1, name='Set-3')
+    mdb.models['Model-1'].DisplacementBC(name='BC-3', createStepName='load', 
+        region=region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
+        amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
+        localCsys=None)
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['blank_holder-1'].referencePoints
+    refPoints1=(r1[3], )
+    region = a.Set(referencePoints=refPoints1, name='Set-4')
+    mdb.models['Model-1'].DisplacementBC(name='BC-4', createStepName='load', 
+        region=region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
+        amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
+        localCsys=None)
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['punch-1'].referencePoints
+    refPoints1=(r1[2], )
+    region = a.Set(referencePoints=refPoints1, name='Set-5')
+    mdb.models['Model-1'].DisplacementBC(name='BC-5', createStepName='load', 
+        region=region, u1=0.0, u2=UNSET, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
+        amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
+        localCsys=None)
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['punch-1'].referencePoints
+    refPoints1=(r1[2], )
+    region = a.Set(referencePoints=refPoints1, name='Set-6')
+    mdb.models['Model-1'].VelocityBC(name='BC-6', createStepName='load', 
+        region=region, v1=UNSET, v2=-200.0, v3=UNSET, vr1=UNSET, vr2=UNSET, 
+        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
+        fieldName='')
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
+        predefinedFields=OFF, connectors=OFF, adaptiveMeshConstraints=ON)
+    mdb.models['Model-1'].ExplicitDynamicsStep(name='unload', previous='load', 
+        timePeriod=0.02, improvedDtMethod=ON)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='unload')
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
+        predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
+    mdb.models['Model-1'].boundaryConditions['BC-4'].setValues(u2=UNSET)
+    mdb.models['Model-1'].boundaryConditions['BC-6'].setValues(v2=200.0)
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['blank_holder-1'].referencePoints
+    refPoints1=(r1[3], )
+    region = a.Set(referencePoints=refPoints1, name='Set-7')
+    mdb.models['Model-1'].VelocityBC(name='ve_holder', createStepName='load', 
+        region=region, v1=UNSET, v2=100.0, v3=UNSET, vr1=UNSET, vr2=UNSET, 
+        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
+        fieldName='')
+    
+
+def create_mesh():
+
+    session.viewports['Viewport: 1'].partDisplay.setValues(mesh=ON)
+    session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
+        meshTechnique=ON)
+    session.viewports['Viewport: 1'].partDisplay.geometryOptions.setValues(
+        referenceRepresentation=OFF)
+    p1 = mdb.models['Model-1'].parts['die']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p1)
+    elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
+    elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+    p = mdb.models['Model-1'].parts['die']
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#7 ]', ), )
+    pickedRegions =(faces, )
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p = mdb.models['Model-1'].parts['die']
+    p.seedPart(size=3.0, deviationFactor=0.1, minSizeFactor=0.1)
+    p = mdb.models['Model-1'].parts['die']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#7 ]', ), )
+    p.setMeshControls(regions=pickedRegions, technique=SWEEP)
+    p = mdb.models['Model-1'].parts['die']
+    p.generateMesh()
+    p = mdb.models['Model-1'].parts['blank_holder']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    p = mdb.models['Model-1'].parts['blank_holder']
+    p.seedPart(size=3.0, deviationFactor=0.1, minSizeFactor=0.1)
+    elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
+    elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+    p = mdb.models['Model-1'].parts['blank_holder']
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#7 ]', ), )
+    pickedRegions =(faces, )
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p = mdb.models['Model-1'].parts['blank_holder']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#7 ]', ), )
+    p.setMeshControls(regions=pickedRegions, technique=SWEEP)
+    p = mdb.models['Model-1'].parts['blank_holder']
+    p.generateMesh()
+    p = mdb.models['Model-1'].parts['blank']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    p = mdb.models['Model-1'].parts['blank']
+    p.seedPart(size=3.0, deviationFactor=0.1, minSizeFactor=0.1)
+    elemType1 = mesh.ElemType(elemCode=S4R, elemLibrary=EXPLICIT)  # 4-node shell element
+    elemType2 = mesh.ElemType(elemCode=S3, elemLibrary=EXPLICIT)  # 3-node shell element
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    pickedRegions =(faces, )
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    p.setMeshControls(regions=pickedRegions, technique=SWEEP)
+    p = mdb.models['Model-1'].parts['blank']
+    p.generateMesh()
+    session.viewports['Viewport: 1'].partDisplay.setValues(sectionAssignments=ON, 
+        engineeringFeatures=ON, mesh=OFF)
+    session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
+        meshTechnique=OFF)
+    session.viewports['Viewport: 1'].partDisplay.setValues(sectionAssignments=OFF, 
+        engineeringFeatures=OFF, mesh=ON)
+    session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
+        meshTechnique=ON)
+    
+def apply_material_properties():
+
+    mdb.models['Model-1'].HomogeneousShellSection(name='blank_section', 
+        preIntegrate=OFF, material='AA1050', thicknessType=UNIFORM, 
+        thickness=1.1, thicknessField='', nodalThicknessField='', 
+        idealization=NO_IDEALIZATION, poissonDefinition=DEFAULT, 
+        thicknessModulus=None, temperature=GRADIENT, useDensity=OFF, 
+        integrationRule=SIMPSON, numIntPts=5)
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    region = p.Set(faces=faces, name='Set-3')
+    p = mdb.models['Model-1'].parts['blank']
+    p.SectionAssignment(region=region, sectionName='blank_section', offset=0.0, 
+        offsetType=MIDDLE_SURFACE, offsetField='', 
+        thicknessAssignment=FROM_SECTION)
 
 
 def main():
@@ -443,44 +587,45 @@ def main():
         dump(asdict(input_dex), file)
 
     # create blank
-    create_blank_part(input_dex.blank_part_name, input_dex.blank_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
-    create_blank_surfaces(input_dex.blank_part_name, input_dex.blank_top_surface_name, input_dex.blank_bottom_surface_name)
+    create_blank_part(input_dex.blank_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
+    create_blank_surfaces()
 
     # create die
-    create_die_part(input_dex.die_part_name, input_dex.die_height, input_dex.die_profile_radius, input_dex.die_min_radius, input_dex.die_max_radius, input_dex.all_part_rotation)
-    create_die_surface(input_dex.die_part_name, input_dex.die_surface_name)
-    die_ref_point(input_dex.die_part_name)  
+    create_die_part(input_dex.die_height, input_dex.die_profile_radius, input_dex.die_min_radius, input_dex.die_max_radius, input_dex.all_part_rotation)
+    create_die_surface()
+    die_ref_point()  
 
     # create bkank holder
-    create_blank_holder(input_dex.blank_holder_part_name, input_dex.blank_holder_height, input_dex.blank_holder_profile_radius, input_dex.blank_holder_min_radius, input_dex.blank_holder_max_radius, input_dex.blank_holder_die_gap, input_dex.all_part_rotation)
-    create_blank_holder_surface(input_dex.blank_holder_part_name, input_dex.blank_holder_surface_name)
-    blank_holder_ref_point(input_dex.blank_holder_part_name)
+    create_blank_holder(input_dex.blank_holder_height, input_dex.blank_holder_profile_radius, input_dex.blank_holder_min_radius, input_dex.blank_holder_max_radius, input_dex.blank_holder_die_gap, input_dex.all_part_rotation)
+    create_blank_holder_surface()
+    blank_holder_ref_point()
 
     # create punch
-    create_punch(input_dex.punch_part_name, input_dex.punch_depth, input_dex.punch_profile_radius, input_dex.punch_min_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
-    punch_ref_point(input_dex.punch_part_name)
-    create_punch_surface(input_dex.punch_part_name, input_dex.punch_surface_name)
+    create_punch(input_dex.punch_depth, input_dex.punch_profile_radius, input_dex.punch_min_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
+    punch_ref_point()
+    create_punch_surface()
 
     # assemble parts
-    create_part_assembly(input_dex.blank_part_name, input_dex.blank_holder_part_name, input_dex.die_part_name, input_dex.punch_part_name)
+    create_part_assembly()
 
     # define material
     create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.youngs_modulus, input_dex.plastic_material_data)
 
-    # define surface interaction properties
-
-    create_interactions()
-
-
-
-
-    # interactions
+    # define surface interactions
+    create_surface_interactions()
 
     # loading and unloading phases
-
-    # BCs
+    create_boundary_conditions()
 
     # meshing
+    create_mesh()
+
+    apply_material_properties()
+
+    # correct order : geom, surface, mesh, material, bc 
+    
+
+    
 
     # save simulation outputs
     mdb.saveAs(pathName=input_dex.simulation_object_path)
