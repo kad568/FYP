@@ -85,7 +85,7 @@ def create_blank_part(blank_part_name, blank_radius, blank_thickness, part_rotat
     s1.Line(point1=(0.0, blank_thickness/2), point2=(blank_radius, blank_thickness/2))
     s1.HorizontalConstraint(entity=g[3], addUndoState=False)
     p = mdb.models['Model-1'].Part(name=blank_part_name, dimensionality=THREE_D, 
-        type=DISCRETE_RIGID_SURFACE)
+        type=DEFORMABLE_BODY)
     p = mdb.models['Model-1'].parts[blank_part_name]
     p.BaseShellRevolve(sketch=s1, angle=part_rotation, flipRevolveDirection=OFF)
     s1.unsetPrimaryObject()
@@ -256,6 +256,49 @@ def create_blank_material(blank_material_name, density, youngs_modulus, posisson
         posissons_ratio), ))
     mdb.models['Model-1'].materials[blank_material_name].Plastic(scaleStress=None, 
         table=plastic_material_data)
+    
+
+
+
+def create_interactions():
+
+    # create interaction properties
+    mdb.models['Model-1'].ContactProperty('die_blank')
+    mdb.models['Model-1'].ContactProperty('punch_blank')
+    mdb.models['Model-1'].ContactProperty('blank_holder_blank')
+
+    # die blank interaction
+    a = mdb.models['Model-1'].rootAssembly
+    region1=a.instances['die-1'].surfaces['die_surface']
+    a = mdb.models['Model-1'].rootAssembly
+    region2=a.instances['blank-1'].surfaces['blank_bottom_surface']
+    mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_blank', 
+        createStepName='Initial', main = region1, secondary = region2, 
+        mechanicalConstraint=KINEMATIC, sliding=FINITE, 
+        interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
+        clearanceRegion=None)
+    
+    # punch blank interaction
+    a = mdb.models['Model-1'].rootAssembly
+    region1=a.instances['punch-1'].surfaces['punch_surface']
+    a = mdb.models['Model-1'].rootAssembly
+    region2=a.instances['blank-1'].surfaces['blank_top_surface']
+    mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='punch_blank', 
+        createStepName='Initial', main = region1, secondary = region2, 
+        mechanicalConstraint=KINEMATIC, sliding=FINITE, 
+        interactionProperty='punch_blank', initialClearance=OMIT, 
+        datumAxis=None, clearanceRegion=None)
+    
+    # blank holder blank interaction
+    a = mdb.models['Model-1'].rootAssembly
+    region1=a.instances['blank_holder-1'].surfaces['blank_holder_surface']
+    a = mdb.models['Model-1'].rootAssembly
+    region2=a.instances['blank-1'].surfaces['blank_top_surface']
+    mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='blank_holder_blank', 
+        createStepName='Initial', main = region1, secondary = region2, 
+        mechanicalConstraint=KINEMATIC, sliding=FINITE, 
+        interactionProperty='blank_holder_blank', initialClearance=OMIT, 
+        datumAxis=None, clearanceRegion=None)
 
 
 def main():
@@ -425,6 +468,11 @@ def main():
     create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.youngs_modulus, input_dex.plastic_material_data)
 
     # define surface interaction properties
+
+    create_interactions()
+
+
+
 
     # interactions
 
