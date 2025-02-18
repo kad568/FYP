@@ -501,7 +501,7 @@ def main():
     input_dex.die_max_radius = 50
 
     # blank holder inputs
-    input_dex.blank_holder_height = 30
+    input_dex.blank_holder_height = 10
     input_dex.blank_holder_profile_radius = 6.5
     input_dex.blank_holder_min_radius = 22
     input_dex.blank_holder_max_radius = 50
@@ -510,7 +510,7 @@ def main():
     # punch inputs
     input_dex.punch_depth = 25
     input_dex.punch_profile_radius = 5
-    input_dex.punch_min_radius = 22
+    input_dex.punch_min_radius = 20
 
     # material inputs
     input_dex.blank_material_name = "AA1050"
@@ -664,7 +664,7 @@ def main():
 
     apply_material_properties()
   
-    # run_sim(simulation_output_dir_path)stampi
+    # run_sim(simulation_output_dir_path)
 
     # save simulation outputs
     mdb.saveAs(pathName=input_dex.simulation_object_path)
