@@ -23,6 +23,7 @@ import connectorBehavior
 # other imports
 from dataclasses import dataclass, asdict
 from json import dump
+import time
 
 
 SCRIPT_PARENT_PATH = "D:\FYP_code\FYP"
@@ -61,6 +62,13 @@ class InputeDex:
     youngs_modulus: float = None # MPa
     posissons_ratio: float = None 
     plastic_material_data: tuple = None # (stress [MPa], strain)
+
+    # BCs
+    punch_velocity: float = None # mm/s
+    punch_depth: float = None # mm
+
+    # mesh
+    mesh_size: float = None # mm
 
 def create_blank_part(blank_radius, blank_thickness, part_rotation):
 
@@ -173,7 +181,6 @@ def create_blank_holder_surface():
     p.Surface(side1Faces=side1Faces, name="blank_holder_surface")
 
 
-
 def blank_holder_ref_point():
 
     p = mdb.models['Model-1'].parts["blank_holder"]
@@ -262,7 +269,7 @@ def create_surface_interactions():
     region2=a.instances['blank-1'].surfaces['blank_bottom_surface']
     mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_blank', 
         createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=KINEMATIC, sliding=FINITE, 
+        mechanicalConstraint=KINEMATIC, sliding=SMALL, 
         interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
         clearanceRegion=None)
     
@@ -289,10 +296,16 @@ def create_surface_interactions():
         datumAxis=None, clearanceRegion=None)
 
 
-def create_boundary_conditions():
+def create_boundary_conditions(punch_velocity, punch_depth):
+    
+    punch_time_period = punch_depth  / punch_velocity
+
+    release_height = 1.5 * punch_depth
+    release_velocity = punch_velocity
+    release_time_period = release_height / release_velocity
 
     mdb.models['Model-1'].ExplicitDynamicsStep(name='load', previous='Initial', 
-        timePeriod=0.04, improvedDtMethod=ON)
+        timePeriod=punch_time_period, improvedDtMethod=ON)
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
@@ -336,31 +349,31 @@ def create_boundary_conditions():
     r1 = a.instances['punch-1'].referencePoints
     refPoints1=(r1[2], )
     region = a.Set(referencePoints=refPoints1, name='Set-6')
-    mdb.models['Model-1'].VelocityBC(name='BC-6', createStepName='load', 
-        region=region, v1=UNSET, v2=-200.0, v3=UNSET, vr1=UNSET, vr2=UNSET, 
-        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
-        fieldName='')
+    mdb.models['Model-1'].DisplacementBC(name='BC-6', createStepName='load', 
+    region=region, u1=0.0, u2=-1 * punch_depth, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
+    amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
+    localCsys=None)
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
         predefinedFields=OFF, connectors=OFF, adaptiveMeshConstraints=ON)
     mdb.models['Model-1'].ExplicitDynamicsStep(name='unload', previous='load', 
-        timePeriod=0.02, improvedDtMethod=ON)
+        timePeriod=release_time_period, improvedDtMethod=ON)
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='unload')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
     mdb.models['Model-1'].boundaryConditions['BC-4'].setValues(u2=UNSET)
-    mdb.models['Model-1'].boundaryConditions['BC-6'].setValues(v2=200.0)
+    mdb.models['Model-1'].boundaryConditions['BC-6'].setValues(u2=release_height)
     a = mdb.models['Model-1'].rootAssembly
     r1 = a.instances['blank_holder-1'].referencePoints
     refPoints1=(r1[3], )
     region = a.Set(referencePoints=refPoints1, name='Set-7')
-    mdb.models['Model-1'].VelocityBC(name='ve_holder', createStepName='load', 
-        region=region, v1=UNSET, v2=100.0, v3=UNSET, vr1=UNSET, vr2=UNSET, 
-        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
+    mdb.models['Model-1'].DisplacementBC(name='BC-7', createStepName='load', 
+        region=region, u1=0.0, u2=release_height, u3=0.0, ur1=0.0, ur2=0.0, 
+        ur3=0.0, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
         fieldName='')
     
 
-def create_mesh():
+def create_mesh(mesh_size):
 
     session.viewports['Viewport: 1'].partDisplay.setValues(mesh=ON)
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
@@ -377,7 +390,7 @@ def create_mesh():
     pickedRegions =(faces, )
     p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
     p = mdb.models['Model-1'].parts['die']
-    p.seedPart(size=3.0, deviationFactor=0.1, minSizeFactor=0.1)
+    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
     p = mdb.models['Model-1'].parts['die']
     f = p.faces
     pickedRegions = f.getSequenceFromMask(mask=('[#7 ]', ), )
@@ -387,7 +400,7 @@ def create_mesh():
     p = mdb.models['Model-1'].parts['blank_holder']
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     p = mdb.models['Model-1'].parts['blank_holder']
-    p.seedPart(size=3.0, deviationFactor=0.1, minSizeFactor=0.1)
+    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
     elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
     elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
     p = mdb.models['Model-1'].parts['blank_holder']
@@ -404,9 +417,9 @@ def create_mesh():
     p = mdb.models['Model-1'].parts['blank']
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     p = mdb.models['Model-1'].parts['blank']
-    p.seedPart(size=3.0, deviationFactor=0.1, minSizeFactor=0.1)
-    elemType1 = mesh.ElemType(elemCode=S4R, elemLibrary=EXPLICIT)  # 4-node shell element
-    elemType2 = mesh.ElemType(elemCode=S3, elemLibrary=EXPLICIT)  # 3-node shell element
+    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
+    elemType1 = mesh.ElemType(elemCode=S4, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
+    elemType2 = mesh.ElemType(elemCode=S3, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
@@ -418,6 +431,18 @@ def create_mesh():
     p.setMeshControls(regions=pickedRegions, technique=SWEEP)
     p = mdb.models['Model-1'].parts['blank']
     p.generateMesh()
+    p1 = mdb.models['Model-1'].parts['punch']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p1)
+    p = mdb.models['Model-1'].parts['punch']
+    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
+    elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
+    elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+    p = mdb.models['Model-1'].parts['punch']
+    p.generateMesh()
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#7 ]', ), )
+    pickedRegions =(faces, )
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
     session.viewports['Viewport: 1'].partDisplay.setValues(sectionAssignments=ON, 
         engineeringFeatures=ON, mesh=OFF)
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
@@ -443,6 +468,16 @@ def apply_material_properties():
     p.SectionAssignment(region=region, sectionName='blank_section', offset=0.0, 
         offsetType=MIDDLE_SURFACE, offsetField='', 
         thicknessAssignment=FROM_SECTION)
+    
+def run_sim(output_path):
+
+    mdb.Job(name='Job-111122', model='Model-1', description='', type=ANALYSIS, 
+        atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
+        memoryUnits=PERCENTAGE, explicitPrecision=SINGLE, 
+        nodalOutputPrecision=SINGLE, echoPrint=OFF, modelPrint=OFF, 
+        contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=output_path, 
+        resultsFormat=ODB)
+    mdb.jobs['Job-111122'].submit()
 
 
 def main():
@@ -581,6 +616,13 @@ def main():
         185.3828485, 2.92), (185.5243007, 2.93), (185.6654033, 2.94), (
         185.8061584, 2.95), (185.946568, 2.96), (186.0866341, 2.97))
     
+    # BCs
+    input_dex.punch_velocity = 10
+    input_dex.punch_depth = 30
+
+    # mesh
+    input_dex.mesh_size = 4
+
     # save simulation inputs
     input_dex_output_path = f"{simulation_output_dir_path}/inputs.json"
     with open(input_dex_output_path, "w") as file:
@@ -609,23 +651,20 @@ def main():
     create_part_assembly()
 
     # define material
-    create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.youngs_modulus, input_dex.plastic_material_data)
+    create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.posissons_ratio, input_dex.plastic_material_data)
 
     # define surface interactions
     create_surface_interactions()
 
     # loading and unloading phases
-    create_boundary_conditions()
+    create_boundary_conditions(input_dex.punch_velocity, input_dex.punch_depth)
 
     # meshing
-    create_mesh()
+    create_mesh(input_dex.mesh_size)
 
     apply_material_properties()
-
-    # correct order : geom, surface, mesh, material, bc 
-    
-
-    
+  
+    # run_sim(simulation_output_dir_path)stampi
 
     # save simulation outputs
     mdb.saveAs(pathName=input_dex.simulation_object_path)
