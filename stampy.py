@@ -267,7 +267,7 @@ def create_surface_interactions():
     region2=a.instances['blank-1'].surfaces['blank_bottom_surface']
     mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_blank', 
         createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=KINEMATIC, sliding=SMALL, 
+        mechanicalConstraint=PENALTY, sliding=FINITE, 
         interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
         clearanceRegion=None)
     
@@ -278,7 +278,7 @@ def create_surface_interactions():
     region2=a.instances['blank-1'].surfaces['blank_top_surface']
     mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='punch_blank', 
         createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=KINEMATIC, sliding=SMALL, 
+        mechanicalConstraint=PENALTY, sliding=FINITE, 
         interactionProperty='punch_blank', initialClearance=OMIT, 
         datumAxis=None, clearanceRegion=None)
     
@@ -289,7 +289,7 @@ def create_surface_interactions():
     region2=a.instances['blank-1'].surfaces['blank_top_surface']
     mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='blank_holder_blank', 
         createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=KINEMATIC, sliding=FINITE, 
+        mechanicalConstraint=PENALTY, sliding=FINITE, 
         interactionProperty='blank_holder_blank', initialClearance=OMIT, 
         datumAxis=None, clearanceRegion=None)
 
@@ -298,9 +298,11 @@ def create_boundary_conditions(punch_velocity, punch_depth):
     
     punch_time_period = punch_depth  / punch_velocity
 
-    release_height = 1.5 * punch_depth
-    release_velocity = punch_velocity
+    release_height = punch_depth
+    release_velocity = punch_velocity * 0.5
     release_time_period = release_height / release_velocity 
+    # move the -1* up so it is clear, maybe make a variable punch displacement
+    # make these variables
 
     a = mdb.models['Model-1'].rootAssembly
     a.regenerate()
@@ -359,9 +361,9 @@ def create_boundary_conditions(punch_velocity, punch_depth):
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
     mdb.models['Model-1'].boundaryConditions['BC-holder'].setValuesInStep(
-        stepName='unload', u2=release_height, amplitude='punch_movement')
+        stepName='unload', u2=7.5, amplitude='punch_movement')
     mdb.models['Model-1'].boundaryConditions['BC-punch'].setValuesInStep(
-        stepName='unload', u2=release_height)
+        stepName='unload', u2=15, amplitude='punch_movement')
 
     
 
