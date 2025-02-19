@@ -26,7 +26,7 @@ from json import dump
 import time
 
 
-SCRIPT_PARENT_PATH = "D:\FYP_code\FYP"
+SCRIPT_PARENT_PATH = "H:\FYP\FYP"
 
 @dataclass
 class InputeDex:
@@ -465,16 +465,16 @@ def apply_material_properties():
     
 def run_sim(output_path):
 
-    if 'Job-111122' in mdb.jobs.keys():
-        del mdb.jobs['Job-111122']
+    if 'job-1' in mdb.jobs.keys():
+        del mdb.jobs['job-1']
 
-    mdb.Job(name='Job-111122', model='Model-1', description='', type=ANALYSIS, 
-        atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
-        memoryUnits=PERCENTAGE, explicitPrecision=SINGLE, 
-        nodalOutputPrecision=SINGLE, echoPrint=OFF, modelPrint=OFF, 
-        contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=output_path, 
-        resultsFormat=ODB)
-    mdb.jobs['Job-111122'].submit()
+    mdb.Job(name='job-1', model='Model-1', description='', type=ANALYSIS, 
+            atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
+            memoryUnits=PERCENTAGE, explicitPrecision=SINGLE, 
+            nodalOutputPrecision=SINGLE, echoPrint=OFF, modelPrint=OFF, 
+            contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=output_path, 
+            resultsFormat=ODB, numCpus=8, numDomains=8, parallelizationMethodExplicit=DOMAIN)
+    mdb.jobs['job-1'].submit()
 
 
 def main():
