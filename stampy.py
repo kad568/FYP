@@ -294,23 +294,19 @@ def create_surface_interactions():
         datumAxis=None, clearanceRegion=None)
 
 
-def create_boundary_conditions(punch_velocity, punch_depth):
-    
-    punch_time_period = punch_depth  / punch_velocity
+def create_boundary_conditions(punch_speed, punch_depth):
 
-    release_height = punch_depth
-    release_velocity = punch_velocity * 0.5
-    release_time_period = release_height / release_velocity 
-    # move the -1* up so it is clear, maybe make a variable punch displacement
-    # make these variables
+    load_time = punch_depth / punch_speed
 
-    a = mdb.models['Model-1'].rootAssembly
-    a.regenerate()
-    session.viewports['Viewport: 1'].setValues(displayedObject=a)
-    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
-        predefinedFields=OFF, connectors=OFF, adaptiveMeshConstraints=ON)
+    punch_release_speed = punch_speed
+    blank_holder_release_speed = punch_release_speed * 0.5
+
+    release_height = punch_depth / 2
+    unload_time = release_height / punch_release_speed
+
+
     mdb.models['Model-1'].ExplicitDynamicsStep(name='load', previous='Initial', 
-        description='', timePeriod=punch_time_period, improvedDtMethod=ON)
+        timePeriod=load_time, improvedDtMethod=ON)
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
@@ -322,6 +318,7 @@ def create_boundary_conditions(punch_velocity, punch_depth):
         region=region, localCsys=None)
     a = mdb.models['Model-1'].rootAssembly
     e1 = a.instances['blank-1'].edges
+
     edges1 = e1.getSequenceFromMask(mask=('[#2 ]', ), )
     region = a.Set(edges=edges1, name='Set-2')
     mdb.models['Model-1'].ZsymmBC(name='BC-2', createStepName='load', 
@@ -329,43 +326,58 @@ def create_boundary_conditions(punch_velocity, punch_depth):
     a = mdb.models['Model-1'].rootAssembly
     r1 = a.instances['die-1'].referencePoints
     refPoints1=(r1[3], )
+
     region = a.Set(referencePoints=refPoints1, name='Set-3')
-    mdb.models['Model-1'].DisplacementBC(name='BC-die', createStepName='load', 
+    mdb.models['Model-1'].DisplacementBC(name='BC-3', createStepName='load', 
         region=region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
         amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
         localCsys=None)
     a = mdb.models['Model-1'].rootAssembly
     r1 = a.instances['blank_holder-1'].referencePoints
     refPoints1=(r1[3], )
+
     region = a.Set(referencePoints=refPoints1, name='Set-4')
-    mdb.models['Model-1'].DisplacementBC(name='BC-holder', createStepName='load', 
+    mdb.models['Model-1'].DisplacementBC(name='BC-4', createStepName='load', 
         region=region, u1=0.0, u2=0.0, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
         amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
         localCsys=None)
-    mdb.models['Model-1'].EquallySpacedAmplitude(name='punch_movement', 
-        timeSpan=STEP, smooth=SOLVER_DEFAULT, fixedInterval=1.0, begin=0.0, 
-        data=(0.0, 1.0))
     a = mdb.models['Model-1'].rootAssembly
     r1 = a.instances['punch-1'].referencePoints
     refPoints1=(r1[2], )
+
     region = a.Set(referencePoints=refPoints1, name='Set-5')
-    mdb.models['Model-1'].DisplacementBC(name='BC-punch', createStepName='load', 
-        region=region, u1=0.0, u2=-1 * punch_depth, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
-        amplitude='punch_movement', fixed=OFF, distributionType=UNIFORM, 
-        fieldName='', localCsys=None)
+    mdb.models['Model-1'].DisplacementBC(name='BC-5', createStepName='load', 
+        region=region, u1=0.0, u2=UNSET, u3=0.0, ur1=0.0, ur2=0.0, ur3=0.0, 
+        amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
+        localCsys=None)
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['punch-1'].referencePoints
+    refPoints1=(r1[2], )
+
+    region = a.Set(referencePoints=refPoints1, name='Set-6')
+    mdb.models['Model-1'].VelocityBC(name='BC-6', createStepName='load', 
+        region=region, v1=UNSET, v2= -1 * punch_speed, v3=UNSET, vr1=UNSET, vr2=UNSET, 
+        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
+        fieldName='')
+
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
         predefinedFields=OFF, connectors=OFF, adaptiveMeshConstraints=ON)
     mdb.models['Model-1'].ExplicitDynamicsStep(name='unload', previous='load', 
-        timePeriod=release_time_period, improvedDtMethod=ON)
+        timePeriod=unload_time, improvedDtMethod=ON)
+
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='unload')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
-    mdb.models['Model-1'].boundaryConditions['BC-holder'].setValuesInStep(
-        stepName='unload', u2=7.5, amplitude='punch_movement')
-    mdb.models['Model-1'].boundaryConditions['BC-punch'].setValuesInStep(
-        stepName='unload', u2=15, amplitude='punch_movement')
-
-    
+    mdb.models['Model-1'].boundaryConditions['BC-4'].setValuesInStep(u2=FREED, stepName='unload')
+    mdb.models['Model-1'].boundaryConditions['BC-6'].setValuesInStep(v2=punch_release_speed, stepName='unload')
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['blank_holder-1'].referencePoints
+    refPoints1=(r1[3], )
+    region = a.Set(referencePoints=refPoints1, name='Set-7')
+    mdb.models['Model-1'].VelocityBC(name='ve_holder', createStepName='unload', 
+        region=region, v1=UNSET, v2=blank_holder_release_speed, v3=UNSET, vr1=UNSET, vr2=UNSET, 
+        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
+        fieldName='')
 
 def create_mesh(mesh_size):
 
@@ -465,24 +477,24 @@ def apply_material_properties():
     
 def run_sim(output_path):
 
-    if 'job-1' in mdb.jobs.keys():
-        del mdb.jobs['job-1']
+    if 'job-6667' in mdb.jobs.keys():
+        del mdb.jobs['job-6667']
 
-    mdb.Job(name='job-1', model='Model-1', description='', type=ANALYSIS, 
+    mdb.Job(name='job-6667', model='Model-1', description='', type=ANALYSIS, 
             atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
             memoryUnits=PERCENTAGE, explicitPrecision=SINGLE, 
             nodalOutputPrecision=SINGLE, echoPrint=OFF, modelPrint=OFF, 
             contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=output_path, 
-            resultsFormat=ODB, numCpus=8, numDomains=8, parallelizationMethodExplicit=DOMAIN)
-    mdb.jobs['job-1'].submit()
+            resultsFormat=ODB, numCpus=3, numDomains=3, parallelizationMethodExplicit=DOMAIN)
+    mdb.jobs['job-6667'].submit()
 
 
 def main():
 
     input_dex = InputeDex()
 
-    simulation_output_dir_path = SCRIPT_PARENT_PATH
-
+    simulation_output_dir_path = r"C:\Users\kam97\OneDrive - University of Bath\Documents\FYP_build\FYP\test_z"
+    
     input_dex.simulation_object_path =  f"{simulation_output_dir_path}/test_deep_drawing.cae"
 
     input_dex.all_part_rotation = 90
@@ -506,7 +518,7 @@ def main():
 
     # punch inputs
     input_dex.punch_depth = 25
-    input_dex.punch_profile_radius = 5
+    input_dex.punch_profile_radius = 5 # 5
     input_dex.punch_min_radius = 20
 
     # material inputs
@@ -618,7 +630,7 @@ def main():
     input_dex.punch_depth = 30
 
     # mesh
-    input_dex.mesh_size = 4
+    input_dex.mesh_size = 2
 
     # save simulation inputs
     input_dex_output_path = f"{simulation_output_dir_path}/inputs.json"
