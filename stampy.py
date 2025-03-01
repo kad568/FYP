@@ -24,19 +24,23 @@ import connectorBehavior
 from dataclasses import dataclass, asdict
 from json import dump
 import time
+import os
+import copy
+import shutil
 
 
-SCRIPT_PARENT_PATH = "H:\FYP\FYP"
+SCRIPT_PARENT_PATH = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build"
 
 @dataclass
 class InputeDex:
 
-    simulation_object_path: str = None
+    simulation_output_path: str = None
     all_part_rotation: int = 90 # degrees
 
     # blank
     blank_radius: float = None # mm
     blank_thickness: float = None # mm
+    integration_points: int = None
 
     # die
     die_height: float = None # mm
@@ -66,6 +70,7 @@ class InputeDex:
     # BCs
     punch_velocity: float = None # mm/s
     punch_depth: float = None # mm
+    mass_scalling:float = None
 
     # mesh
     mesh_size: float = None # mm
@@ -88,18 +93,47 @@ def create_blank_part(blank_radius, blank_thickness, part_rotation):
     p = mdb.models['Model-1'].parts["blank"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models['Model-1'].sketches['__profile__']
+    
+    p = mdb.models['Model-1'].parts['blank']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    session.viewports['Viewport: 1'].view.setValues(nearPlane=119.354, 
+        farPlane=210.572, width=49.2805, height=20.9298, viewOffsetX=0.194489, 
+        viewOffsetY=4.84156)
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    p.deleteMesh(regions=pickedRegions)
+    p = mdb.models['Model-1'].parts['blank']
+    f, e1, d2 = p.faces, p.edges, p.datums
+    t = p.MakeSketchTransform(sketchPlane=f[0], sketchUpEdge=e1[1], 
+        sketchPlaneSide=SIDE1, origin=(16.976527, 0.55, 16.976527))
+    s = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
+        sheetSize=113.14, gridSpacing=2.82, transform=t)
+    g, v, d, c = s.geometry, s.vertices, s.dimensions, s.constraints
+    s.setPrimaryObject(option=SUPERIMPOSE)
+    p = mdb.models['Model-1'].parts['blank']
+    p.projectReferencesOntoSketch(sketch=s, filter=COPLANAR_EDGES)
+    s.CircleByCenterPerimeter(center=(16.976527, -16.976527), point1=(8.46, 
+        -7.755)) # change inner circle radius
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    pickedFaces = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    e, d1 = p.edges, p.datums
+    p.PartitionFaceBySketch(sketchUpEdge=e[1], faces=pickedFaces, sketch=s)
+    s.unsetPrimaryObject()
+    del mdb.models['Model-1'].sketches['__profile__']
 
 
 def create_blank_surfaces():
 
-    p = mdb.models['Model-1'].parts["blank"]
+    p = mdb.models['Model-1'].parts['blank']
     s = p.faces
-    side2Faces = s.getSequenceFromMask(mask=('[#1 ]', ), )
-    p.Surface(side2Faces=side2Faces, name="blank_top_surface")
-    p = mdb.models['Model-1'].parts["blank"]
+    side2Faces = s.getSequenceFromMask(mask=('[#3 ]', ), )
+    p.Surface(side2Faces=side2Faces, name='blank_top_surface')
+    p = mdb.models['Model-1'].parts['blank']
     s = p.faces
-    side1Faces = s.getSequenceFromMask(mask=('[#1 ]', ), )
-    p.Surface(side1Faces=side1Faces, name="blank_bottom_surface")
+    side1Faces = s.getSequenceFromMask(mask=('[#3 ]', ), )
+    p.Surface(side1Faces=side1Faces, name='blank_bottom_surface')
 
 
 def create_die_part(die_height, die_profile_radius, die_min_radius, die_max_radius, part_rotation):
@@ -294,7 +328,7 @@ def create_surface_interactions():
         datumAxis=None, clearanceRegion=None)
 
 
-def create_boundary_conditions(punch_speed, punch_depth):
+def create_boundary_conditions(punch_speed, punch_depth, mass_scaling):
 
     load_time = punch_depth / punch_speed
 
@@ -307,19 +341,22 @@ def create_boundary_conditions(punch_speed, punch_depth):
 
     mdb.models['Model-1'].ExplicitDynamicsStep(name='load', previous='Initial', 
         timePeriod=load_time, improvedDtMethod=ON)
+    mdb.models['Model-1'].steps['load'].setValues(massScaling=((SEMI_AUTOMATIC, 
+        MODEL, AT_BEGINNING, 0.0, mass_scaling, BELOW_MIN, 0, 0, 0.0, 0.0, 0, None), 
+        ), improvedDtMethod=ON)
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
     a = mdb.models['Model-1'].rootAssembly
     e1 = a.instances['blank-1'].edges
-    edges1 = e1.getSequenceFromMask(mask=('[#1 ]', ), )
+    edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
     region = a.Set(edges=edges1, name='Set-1')
     mdb.models['Model-1'].XsymmBC(name='BC-1', createStepName='load', 
         region=region, localCsys=None)
     a = mdb.models['Model-1'].rootAssembly
     e1 = a.instances['blank-1'].edges
 
-    edges1 = e1.getSequenceFromMask(mask=('[#2 ]', ), )
+    edges1 = e1.getSequenceFromMask(mask=('[#44 ]', ), )
     region = a.Set(edges=edges1, name='Set-2')
     mdb.models['Model-1'].ZsymmBC(name='BC-2', createStepName='load', 
         region=region, localCsys=None)
@@ -357,25 +394,6 @@ def create_boundary_conditions(punch_speed, punch_depth):
     region = a.Set(referencePoints=refPoints1, name='Set-6')
     mdb.models['Model-1'].VelocityBC(name='BC-6', createStepName='load', 
         region=region, v1=UNSET, v2= -1 * punch_speed, v3=UNSET, vr1=UNSET, vr2=UNSET, 
-        vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
-        fieldName='')
-
-    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
-        predefinedFields=OFF, connectors=OFF, adaptiveMeshConstraints=ON)
-    mdb.models['Model-1'].ExplicitDynamicsStep(name='unload', previous='load', 
-        timePeriod=unload_time, improvedDtMethod=ON)
-
-    session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='unload')
-    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
-        predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
-    mdb.models['Model-1'].boundaryConditions['BC-4'].setValuesInStep(u2=FREED, stepName='unload')
-    mdb.models['Model-1'].boundaryConditions['BC-6'].setValuesInStep(v2=punch_release_speed, stepName='unload')
-    a = mdb.models['Model-1'].rootAssembly
-    r1 = a.instances['blank_holder-1'].referencePoints
-    refPoints1=(r1[3], )
-    region = a.Set(referencePoints=refPoints1, name='Set-7')
-    mdb.models['Model-1'].VelocityBC(name='ve_holder', createStepName='unload', 
-        region=region, v1=UNSET, v2=blank_holder_release_speed, v3=UNSET, vr1=UNSET, vr2=UNSET, 
         vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
         fieldName='')
 
@@ -424,8 +442,25 @@ def create_mesh(mesh_size):
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     p = mdb.models['Model-1'].parts['blank']
     p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
+    edges = p.edges.getByBoundingBox(-5, -5, -10, 5, 5, 10)  # Select inner edges
+    p.seedEdgeBySize(edges=edges, size=mesh_size / 3, constraint=FIXED)
     elemType1 = mesh.ElemType(elemCode=S4, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
     elemType2 = mesh.ElemType(elemCode=S3, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    pickedRegions =(faces, )
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1,))
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    p.setMeshControls(regions=pickedRegions, technique=SWEEP)
+    p = mdb.models['Model-1'].parts['blank']
+    p.generateMesh()
+
+    elemType1 = mesh.ElemType(elemCode=S4, elemLibrary=EXPLICIT, 
+        secondOrderAccuracy=ON)
+    elemType2 = mesh.ElemType(elemCode=S3R, elemLibrary=EXPLICIT)
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
@@ -436,7 +471,9 @@ def create_mesh(mesh_size):
     pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
     p.setMeshControls(regions=pickedRegions, technique=SWEEP)
     p = mdb.models['Model-1'].parts['blank']
+    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
     p.generateMesh()
+
     p1 = mdb.models['Model-1'].parts['punch']
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
     p = mdb.models['Model-1'].parts['punch']
@@ -458,50 +495,211 @@ def create_mesh(mesh_size):
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
         meshTechnique=ON)
     
-def apply_material_properties():
+def apply_material_properties(material_name, integration_points, blank_thickness):
 
+    p = mdb.models['Model-1'].parts['blank']
     mdb.models['Model-1'].HomogeneousShellSection(name='blank_section', 
-        preIntegrate=OFF, material='AA1050', thicknessType=UNIFORM, 
-        thickness=1.1, thicknessField='', nodalThicknessField='', 
+        preIntegrate=OFF, material=material_name, thicknessType=UNIFORM, 
+        thickness=blank_thickness, thicknessField='', nodalThicknessField='', 
         idealization=NO_IDEALIZATION, poissonDefinition=DEFAULT, 
         thicknessModulus=None, temperature=GRADIENT, useDensity=OFF, 
-        integrationRule=SIMPSON, numIntPts=5)
+        integrationRule=SIMPSON, numIntPts=integration_points)
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
-    faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
-    region = p.Set(faces=faces, name='Set-3')
+    faces = f.getSequenceFromMask(mask=('[#3 ]', ), )
+    region = regionToolset.Region(faces=faces)
     p = mdb.models['Model-1'].parts['blank']
     p.SectionAssignment(region=region, sectionName='blank_section', offset=0.0, 
         offsetType=MIDDLE_SURFACE, offsetField='', 
         thicknessAssignment=FROM_SECTION)
     
-def run_sim(output_path):
+def run_sim_job(sim_out_path, nCPU):
 
-    if 'job-6667' in mdb.jobs.keys():
-        del mdb.jobs['job-6667']
+    job_name = "stamping_sim"
 
-    mdb.Job(name='job-6667', model='Model-1', description='', type=ANALYSIS, 
-            atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
-            memoryUnits=PERCENTAGE, explicitPrecision=SINGLE, 
-            nodalOutputPrecision=SINGLE, echoPrint=OFF, modelPrint=OFF, 
-            contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=output_path, 
-            resultsFormat=ODB, numCpus=3, numDomains=3, parallelizationMethodExplicit=DOMAIN)
-    mdb.jobs['job-6667'].submit()
+    mdb.Job(
+        name=job_name, model='Model-1', description='', type=ANALYSIS, 
+        atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
+        memoryUnits=PERCENTAGE, explicitPrecision=DOUBLE, 
+        nodalOutputPrecision=FULL, echoPrint=OFF, modelPrint=OFF, 
+        contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=sim_out_path,
+        resultsFormat=ODB, numCpus=nCPU, numDomains=nCPU, parallelizationMethodExplicit=DOMAIN
+    )
 
+    mdb.jobs[job_name].submit()
+
+    # Wait for the Abaqus job to complete before proceeding
+    mdb.jobs[job_name].waitForCompletion()
+
+def spring_back_analysis(sim_out_path, nCPU):
+
+    mdb.Model(name='Model-1-spring_back', objectToCopy=mdb.models['Model-1'])
+    p = mdb.models['Model-1-spring_back'].parts['blank']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    del mdb.models['Model-1-spring_back'].parts['blank_holder']
+    del mdb.models['Model-1-spring_back'].parts['die']
+    del mdb.models['Model-1-spring_back'].parts['punch']
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    session.viewports['Viewport: 1'].setValues(displayedObject=a)
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    session.viewports['Viewport: 1'].setValues(displayedObject=a)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
+        predefinedFields=OFF, connectors=OFF, optimizationTasks=OFF, 
+        geometricRestrictions=OFF, stopConditions=OFF)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(interactions=ON, 
+        constraints=ON, connectors=ON, engineeringFeatures=ON)
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    a.deleteFeatures(('blank_holder-1', 'die-1', 'punch-1', ))
+    del mdb.models['Model-1-spring_back'].interactions['blank_holder_blank']
+    del mdb.models['Model-1-spring_back'].interactions['die_blank']
+    del mdb.models['Model-1-spring_back'].interactions['punch_blank']
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(interactions=OFF, 
+        constraints=OFF, connectors=OFF, engineeringFeatures=OFF, 
+        adaptiveMeshConstraints=ON)
+    del mdb.models['Model-1-spring_back'].steps['load']
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='Initial')
+    mdb.models['Model-1-spring_back'].StaticStep(name='Step-1', previous='Initial', 
+        maxNumInc=10000, initialInc=0.001, maxInc=0.1, nlgeom=ON)
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    e1 = a.instances['blank-1'].edges
+    edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
+    region = a.Set(edges=edges1, name='Set-7')
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    e1 = a.instances['blank-1'].edges
+    edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
+    region = a.Set(edges=edges1, name='Set-9')
+    mdb.models['Model-1-spring_back'].XsymmBC(name='BC-1', createStepName='Step-1', 
+        region=region, localCsys=None)
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    e1 = a.instances['blank-1'].edges
+    edges1 = e1.getSequenceFromMask(mask=('[#44 ]', ), )
+    region = a.Set(edges=edges1, name='Set-10')
+    mdb.models['Model-1-spring_back'].ZsymmBC(name='BC-2', createStepName='Step-1', 
+        region=region, localCsys=None)
+
+    a = mdb.models['Model-1-spring_back'].rootAssembly
+    v1 = a.instances['blank-1'].vertices
+    verts1 = v1.getSequenceFromMask(mask=('[#20 ]', ), )
+    region = a.Set(vertices=verts1, name='Set-11')
+    mdb.models['Model-1-spring_back'].DisplacementBC(name='BC-3', 
+        createStepName='Step-1', region=region, u1=0.0, u2=0.0, u3=0.0, 
+        ur1=0.0, ur2=0.0, ur3=0.0, amplitude=UNSET, fixed=OFF, 
+        distributionType=UNIFORM, fieldName='', localCsys=None)
+    instances=(mdb.models['Model-1-spring_back'].rootAssembly.instances['blank-1'], 
+        )
+    mdb.models['Model-1-spring_back'].InitialState(
+        updateReferenceConfiguration=ON, fileName='stamping_sim', 
+        endStep=LAST_STEP, endIncrement=STEP_END, name='Predefined Field-1', 
+        createStepName='Initial', instances=instances)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
+        predefinedFields=OFF, connectors=OFF)
+    mdb.Job(name='spring_back', model='Model-1-spring_back', description='', 
+        type=ANALYSIS, atTime=None, waitMinutes=0, waitHours=0, queue=None, 
+        memory=90, memoryUnits=PERCENTAGE, getMemoryFromAnalysis=True, 
+        explicitPrecision=SINGLE, nodalOutputPrecision=FULL, echoPrint=OFF, 
+        modelPrint=OFF, contactPrint=OFF, historyPrint=OFF, userSubroutine='', 
+        scratch=sim_out_path, 
+        resultsFormat=ODB, numThreadsPerMpiProcess=1, 
+        multiprocessingMode=DEFAULT, numCpus=nCPU, numDomains=nCPU, numGPUs=1)
+    mdb.jobs['spring_back'].submit(consistencyChecking=OFF)
+
+    mdb.jobs['spring_back'].waitForCompletion()
+
+
+
+def run_sim(input_dex: InputeDex):
+    
+    # reste abaqus
+    Mdb()
+    session.viewports['Viewport: 1'].setValues(displayedObject=None)
+
+    # set work directory
+    os.chdir(input_dex.simulation_output_path)
+
+    # save simulation param inputs
+    input_dex_output_path = f"{input_dex.simulation_output_path}/inputs.json"
+    with open(input_dex_output_path, "w") as file:
+        dump(asdict(input_dex), file)
+
+    # create blank
+    create_blank_part(input_dex.blank_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
+    create_blank_surfaces()
+
+    # create die
+    create_die_part(input_dex.die_height, input_dex.die_profile_radius, input_dex.die_min_radius, input_dex.die_max_radius, input_dex.all_part_rotation)
+    create_die_surface()
+    die_ref_point()  
+
+    # create bkank holder
+    create_blank_holder(input_dex.blank_holder_height, input_dex.blank_holder_profile_radius, input_dex.blank_holder_min_radius, input_dex.blank_holder_max_radius, input_dex.blank_holder_die_gap, input_dex.all_part_rotation)
+    create_blank_holder_surface()
+    blank_holder_ref_point()
+
+    # create punch
+    create_punch(input_dex.punch_depth, input_dex.punch_profile_radius, input_dex.punch_min_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
+    punch_ref_point()
+    create_punch_surface()
+
+    # assemble parts
+    create_part_assembly()
+
+    # define material
+    create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.posissons_ratio, input_dex.plastic_material_data)
+
+    # define surface interactions
+    create_surface_interactions()
+
+    # loading and unloading phases
+    create_boundary_conditions(input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling)
+
+    # meshing
+    create_mesh(input_dex.mesh_size)
+
+    apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness)
+
+    nCPU = 4
+
+    # Save the model database (.cae) after simulation finishes
+    cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    mdb.saveAs(pathName=cae_path)
+  
+    run_sim_job(input_dex.simulation_output_path, nCPU)
+
+    # Save the model database (.cae) after simulation finishes
+    cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    mdb.saveAs(pathName=cae_path)
+
+    spring_back_analysis(input_dex.simulation_output_path, nCPU)
+
+    # Save the model database (.cae) after simulation finishes
+    cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    mdb.saveAs(pathName=cae_path)
+
+
+def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
+
+    os.makedirs(main_sim_path, exist_ok=False) 
+
+    for i, sim in enumerate(batch, start=1):
+        # Create a unique path for each simulation
+        sim.simulation_output_path = os.path.join(main_sim_path, f"sim_{i}")
+
+        # Ensure the simulation directory exists
+        os.makedirs(sim.simulation_output_path, exist_ok=False)
+
+        # Run the simulation
+        run_sim(sim)
 
 def main():
 
     input_dex = InputeDex()
-
-    simulation_output_dir_path = r"C:\Users\kam97\OneDrive - University of Bath\Documents\FYP_build\FYP\test_z"
     
-    input_dex.simulation_object_path =  f"{simulation_output_dir_path}/test_deep_drawing.cae"
-
     input_dex.all_part_rotation = 90
 
     # blank inputs
     input_dex.blank_radius = 40
     input_dex.blank_thickness = 1.1
+    input_dex.integration_points = 15
 
     # die inputs
     input_dex.die_height = 30
@@ -514,10 +712,10 @@ def main():
     input_dex.blank_holder_profile_radius = 6.5
     input_dex.blank_holder_min_radius = 22
     input_dex.blank_holder_max_radius = 50
-    input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.1
+    input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.5
 
     # punch inputs
-    input_dex.punch_depth = 25
+    input_dex.punch_depth = 10
     input_dex.punch_profile_radius = 5 # 5
     input_dex.punch_min_radius = 20
 
@@ -627,57 +825,21 @@ def main():
     
     # BCs
     input_dex.punch_velocity = 10
-    input_dex.punch_depth = 30
+    input_dex.punch_depth = 15
+    input_dex.mass_scalling = 5e-6
 
     # mesh
-    input_dex.mesh_size = 2
+    input_dex.mesh_size = 1
 
-    # save simulation inputs
-    input_dex_output_path = f"{simulation_output_dir_path}/inputs.json"
-    with open(input_dex_output_path, "w") as file:
-        dump(asdict(input_dex), file)
+    # input dex 2
+    input_dex_2: InputeDex = copy.deepcopy(input_dex)
+    input_dex_2.punch_profile_radius = 20
 
-    # create blank
-    create_blank_part(input_dex.blank_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
-    create_blank_surfaces()
+    input_dex_set = [input_dex]
 
-    # create die
-    create_die_part(input_dex.die_height, input_dex.die_profile_radius, input_dex.die_min_radius, input_dex.die_max_radius, input_dex.all_part_rotation)
-    create_die_surface()
-    die_ref_point()  
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp45"
 
-    # create bkank holder
-    create_blank_holder(input_dex.blank_holder_height, input_dex.blank_holder_profile_radius, input_dex.blank_holder_min_radius, input_dex.blank_holder_max_radius, input_dex.blank_holder_die_gap, input_dex.all_part_rotation)
-    create_blank_holder_surface()
-    blank_holder_ref_point()
-
-    # create punch
-    create_punch(input_dex.punch_depth, input_dex.punch_profile_radius, input_dex.punch_min_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
-    punch_ref_point()
-    create_punch_surface()
-
-    # assemble parts
-    create_part_assembly()
-
-    # define material
-    create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.posissons_ratio, input_dex.plastic_material_data)
-
-    # define surface interactions
-    create_surface_interactions()
-
-    # loading and unloading phases
-    create_boundary_conditions(input_dex.punch_velocity, input_dex.punch_depth)
-
-    # meshing
-    create_mesh(input_dex.mesh_size)
-
-    apply_material_properties()
-  
-    run_sim(simulation_output_dir_path)
-
-    # save simulation outputs
-    # mdb.saveAs(pathName=input_dex.simulation_object_path)
-
+    run_batch_sim(input_dex_set, main_sim_output)
 
 if __name__ == "__main__":
     main()
