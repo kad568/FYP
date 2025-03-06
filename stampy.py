@@ -27,7 +27,11 @@ import time
 import os
 import copy
 import shutil
-
+from odbAccess import openOdb
+from abaqusConstants import *
+import matplotlib.pyplot as plt
+import numpy as np
+from odbAccess import *
 
 SCRIPT_PARENT_PATH = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build"
 
@@ -512,6 +516,23 @@ def apply_material_properties(material_name, integration_points, blank_thickness
     p.SectionAssignment(region=region, sectionName='blank_section', offset=0.0, 
         offsetType=MIDDLE_SURFACE, offsetField='', 
         thicknessAssignment=FROM_SECTION)
+
+    regionDef=mdb.models['Model-1'].rootAssembly.sets['Set-5']
+    mdb.models['Model-1'].HistoryOutputRequest(name='H-Output-2', 
+        createStepName='load', variables=('RF1', 'RF2', 'RF3', 'RM1', 'RM2', 
+        'RM3'), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
+
+    p = mdb.models['Model-1'].parts['blank']
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#3 ]', ), )
+    p.Set(faces=faces, name='blank_set')
+    a = mdb.models['Model-1'].rootAssembly
+    a.regenerate()
+    session.viewports['Viewport: 1'].setValues(displayedObject=a)
+    mdb.models['Model-1'].FieldOutputRequest(name='F-Output-2', 
+        createStepName='load', variables=('STH', ), region=MODEL, 
+        exteriorOnly=OFF, sectionPoints=DEFAULT, rebar=EXCLUDE)
+
     
 def run_sim_job(sim_out_path, nCPU):
 
@@ -657,7 +678,7 @@ def run_sim(input_dex: InputeDex):
 
     apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness)
 
-    nCPU = 4
+    nCPU = 8
 
     # Save the model database (.cae) after simulation finishes
     cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
@@ -689,6 +710,59 @@ def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
 
         # Run the simulation
         run_sim(sim)
+        post_pro_section_thickness()
+
+
+
+def post_pro_section_thickness():
+    
+
+    # Get the current working directory
+    cwd = os.getcwd()
+
+    # Find the ODB file in the current directory
+    odb_filename = "stamping_sim.odb"  # Modify if your ODB has a different name
+    odb_path = os.path.join(cwd, odb_filename)
+
+    # Open the ODB
+    odb = openOdb(odb_path)
+
+    # Get the last step dynamically
+    last_step_name = list(odb.steps.keys())[-1]
+    last_step = odb.steps[last_step_name]
+
+    # Get the last frame dynamically
+    last_frame = last_step.frames[-1]  # Last frame
+
+    # Extract section thickness (STH) from the last frame
+    if "STH" in last_frame.fieldOutputs:
+        sth_field = last_frame.fieldOutputs["STH"]
+        
+        # Open file to save results
+        output_file = os.path.join(cwd, "section_thickness_results.csv")
+        with open(output_file, "w") as f:
+            f.write("ElementID,SectionThickness\n")  # CSV header
+            
+            # Loop through each element result in the field output
+            for value in sth_field.values:
+                element_id = value.elementLabel  # Element ID
+                thickness = value.data  # Section thickness value
+                
+                # Write to file
+                f.write(f"{element_id},{thickness}\n")
+        
+        print(f"Section thickness data saved to {output_file}")
+
+    else:
+        print("Error: STH field output not found in the last frame.")
+
+    # Close ODB
+    odb.close()
+
+
+
+
+
 
 def main():
 
@@ -825,19 +899,31 @@ def main():
     
     # BCs
     input_dex.punch_velocity = 10
-    input_dex.punch_depth = 15
+    input_dex.punch_depth = 20
     input_dex.mass_scalling = 5e-6
 
     # mesh
-    input_dex.mesh_size = 1
+    input_dex.mesh_size = 5
 
     # input dex 2
     input_dex_2: InputeDex = copy.deepcopy(input_dex)
-    input_dex_2.punch_profile_radius = 20
+    input_dex_2.mesh_size = 3
 
-    input_dex_set = [input_dex]
+    # input dex 3
+    input_dex_3: InputeDex = copy.deepcopy(input_dex)
+    input_dex_3.mesh_size = 1
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp45"
+    # input dex 4
+    input_dex_4: InputeDex = copy.deepcopy(input_dex)
+    input_dex_4.mesh_size = 0.5
+
+    # input dex 5
+    input_dex_5: InputeDex = copy.deepcopy(input_dex)
+    input_dex_5.mesh_size = 0.3
+
+    input_dex_set = [input_dex_5]
+
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp52"
 
     run_batch_sim(input_dex_set, main_sim_output)
 
