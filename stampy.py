@@ -32,13 +32,22 @@ from abaqusConstants import *
 import matplotlib.pyplot as plt
 import numpy as np
 from odbAccess import *
+import pandas
+from enum import Enum
 
 SCRIPT_PARENT_PATH = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build"
+
+class SolverType(Enum):
+
+    STANDARD = 0
+    EXPLICIT = 1
+
 
 @dataclass
 class InputeDex:
 
     simulation_output_path: str = None
+    solver_type: SolverType = SolverType.STANDARD # options are "explicit" or "standard"
     all_part_rotation: int = 90 # degrees
 
     # blank
@@ -291,7 +300,7 @@ def create_blank_material(blank_material_name, density, youngs_modulus, posisson
         table=plastic_material_data)
 
 
-def create_surface_interactions():
+def create_surface_interactions(solver_type: SolverType):
 
     # create interaction properties
     mdb.models['Model-1'].ContactProperty('die_blank')
@@ -303,36 +312,54 @@ def create_surface_interactions():
     region1=a.instances['die-1'].surfaces['die_surface']
     a = mdb.models['Model-1'].rootAssembly
     region2=a.instances['blank-1'].surfaces['blank_bottom_surface']
-    mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_blank', 
-        createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=PENALTY, sliding=FINITE, 
-        interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
-        clearanceRegion=None)
+    if solver_type == SolverType.EXPLICIT:
+        mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_blank', 
+            createStepName='Initial', main = region1, secondary = region2, 
+            mechanicalConstraint=PENALTY, sliding=FINITE, 
+            interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
+    elif solver_type == SolverType.STANDARD:
+        mdb.models['Model-1'].SurfaceToSurfaceContactStd(name ='die_blank', 
+            createStepName='Initial', main = region1, secondary = region2, sliding=FINITE, 
+            interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
     
     # punch blank interaction
     a = mdb.models['Model-1'].rootAssembly
     region1=a.instances['punch-1'].surfaces['punch_surface']
     a = mdb.models['Model-1'].rootAssembly
     region2=a.instances['blank-1'].surfaces['blank_top_surface']
-    mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='punch_blank', 
-        createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=PENALTY, sliding=FINITE, 
-        interactionProperty='punch_blank', initialClearance=OMIT, 
-        datumAxis=None, clearanceRegion=None)
-    
+    if solver_type == SolverType.EXPLICIT:
+        mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='punch_blank', 
+            createStepName='Initial', main = region1, secondary = region2, 
+            mechanicalConstraint=PENALTY, sliding=FINITE, 
+            interactionProperty='punch_blank', initialClearance=OMIT, 
+            datumAxis=None, clearanceRegion=None)
+    elif solver_type == SolverType.STANDARD:
+        mdb.models['Model-1'].SurfaceToSurfaceContactStd(name ='punch_blank', 
+            createStepName='Initial', main = region1, secondary = region2, sliding=FINITE, 
+            interactionProperty='punch_blank', initialClearance=OMIT, 
+            datumAxis=None, clearanceRegion=None)
     # blank holder blank interaction
     a = mdb.models['Model-1'].rootAssembly
     region1=a.instances['blank_holder-1'].surfaces['blank_holder_surface']
     a = mdb.models['Model-1'].rootAssembly
     region2=a.instances['blank-1'].surfaces['blank_top_surface']
-    mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='blank_holder_blank', 
-        createStepName='Initial', main = region1, secondary = region2, 
-        mechanicalConstraint=PENALTY, sliding=FINITE, 
-        interactionProperty='blank_holder_blank', initialClearance=OMIT, 
-        datumAxis=None, clearanceRegion=None)
+    if solver_type == SolverType.EXPLICIT:
+            
+        mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='blank_holder_blank', 
+            createStepName='Initial', main = region1, secondary = region2, 
+            mechanicalConstraint=PENALTY, sliding=FINITE, 
+            interactionProperty='blank_holder_blank', initialClearance=OMIT, 
+            datumAxis=None, clearanceRegion=None)
+    elif solver_type == SolverType.STANDARD:
 
-
-def create_boundary_conditions(punch_speed, punch_depth, mass_scaling):
+        mdb.models['Model-1'].SurfaceToSurfaceContactStd(name ='blank_holder_blank', 
+                createStepName='Initial', main = region1, secondary = region2, sliding=FINITE, 
+                interactionProperty='blank_holder_blank', initialClearance=OMIT, 
+                datumAxis=None, clearanceRegion=None)
+        
+def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scaling):
 
     load_time = punch_depth / punch_speed
 
@@ -342,12 +369,31 @@ def create_boundary_conditions(punch_speed, punch_depth, mass_scaling):
     release_height = punch_depth / 2
     unload_time = release_height / punch_release_speed
 
+    if solver_type == SolverType.EXPLICIT:
 
-    mdb.models['Model-1'].ExplicitDynamicsStep(name='load', previous='Initial', 
-        timePeriod=load_time, improvedDtMethod=ON)
-    mdb.models['Model-1'].steps['load'].setValues(massScaling=((SEMI_AUTOMATIC, 
-        MODEL, AT_BEGINNING, 0.0, mass_scaling, BELOW_MIN, 0, 0, 0.0, 0.0, 0, None), 
-        ), improvedDtMethod=ON)
+        mdb.models['Model-1'].ExplicitDynamicsStep(name='load', previous='Initial', 
+            timePeriod=load_time, improvedDtMethod=ON)
+        mdb.models['Model-1'].steps['load'].setValues(massScaling=((SEMI_AUTOMATIC, 
+            MODEL, AT_BEGINNING, 0.0, mass_scaling, BELOW_MIN, 0, 0, 0.0, 0.0, 0, None), 
+            ), improvedDtMethod=ON)
+
+    elif solver_type == SolverType.STANDARD:
+        mdb.models['Model-1'].StaticStep(
+            name='load', 
+            previous='Initial',
+            timePeriod=load_time,
+            maxNumInc=1000,  # Adjust increment limit
+            initialInc=0.1, 
+            maxInc=1.0, 
+            nlgeom=ON
+        )
+
+        mdb.models['Model-1'].steps['load'].Restart(
+            frequency=1,
+            overlay=OFF
+        )
+
+
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
         predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
@@ -401,7 +447,20 @@ def create_boundary_conditions(punch_speed, punch_depth, mass_scaling):
         vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
         fieldName='')
 
-def create_mesh(mesh_size):
+def create_mesh(solver_type: SolverType, mesh_size):
+
+    if solver_type == SolverType.EXPLICIT:
+        
+        elemType1_rb = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
+        elemType2_rb = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+        elemType1_shell = mesh.ElemType(elemCode=S4R, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
+        elemType2_shell = mesh.ElemType(elemCode=S3R, elemLibrary=EXPLICIT)
+    elif solver_type == SolverType.STANDARD:
+
+        elemType1_rb = mesh.ElemType(elemCode=R3D4, elemLibrary=STANDARD)
+        elemType2_rb = mesh.ElemType(elemCode=R3D3, elemLibrary=STANDARD)
+        elemType1_shell = mesh.ElemType(elemCode=S4R, elemLibrary=STANDARD)
+        elemType2_shell = mesh.ElemType(elemCode=S3R, elemLibrary=STANDARD)
 
     session.viewports['Viewport: 1'].partDisplay.setValues(mesh=ON)
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
@@ -410,13 +469,12 @@ def create_mesh(mesh_size):
         referenceRepresentation=OFF)
     p1 = mdb.models['Model-1'].parts['die']
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
-    elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
-    elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+
     p = mdb.models['Model-1'].parts['die']
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#7 ]', ), )
     pickedRegions =(faces, )
-    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1_rb, elemType2_rb))
     p = mdb.models['Model-1'].parts['die']
     p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
     p = mdb.models['Model-1'].parts['die']
@@ -429,13 +487,13 @@ def create_mesh(mesh_size):
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     p = mdb.models['Model-1'].parts['blank_holder']
     p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
-    elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
-    elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+
+
     p = mdb.models['Model-1'].parts['blank_holder']
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#7 ]', ), )
     pickedRegions =(faces, )
-    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1_rb, elemType2_rb))
     p = mdb.models['Model-1'].parts['blank_holder']
     f = p.faces
     pickedRegions = f.getSequenceFromMask(mask=('[#7 ]', ), )
@@ -448,13 +506,14 @@ def create_mesh(mesh_size):
     p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
     edges = p.edges.getByBoundingBox(-5, -5, -10, 5, 5, 10)  # Select inner edges
     p.seedEdgeBySize(edges=edges, size=mesh_size / 3, constraint=FIXED)
-    elemType1 = mesh.ElemType(elemCode=S4, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
-    elemType2 = mesh.ElemType(elemCode=S3, elemLibrary=EXPLICIT, secondOrderAccuracy=ON)
+
+
+
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
     pickedRegions =(faces, )
-    p.setElementType(regions=pickedRegions, elemTypes=(elemType1,))
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1_shell,))
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
@@ -462,14 +521,11 @@ def create_mesh(mesh_size):
     p = mdb.models['Model-1'].parts['blank']
     p.generateMesh()
 
-    elemType1 = mesh.ElemType(elemCode=S4, elemLibrary=EXPLICIT, 
-        secondOrderAccuracy=ON)
-    elemType2 = mesh.ElemType(elemCode=S3R, elemLibrary=EXPLICIT)
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
     pickedRegions =(faces, )
-    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1_shell, elemType2_shell))
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
@@ -482,14 +538,13 @@ def create_mesh(mesh_size):
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
     p = mdb.models['Model-1'].parts['punch']
     p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
-    elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=EXPLICIT)
-    elemType2 = mesh.ElemType(elemCode=R3D3, elemLibrary=EXPLICIT)
+
     p = mdb.models['Model-1'].parts['punch']
     p.generateMesh()
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#7 ]', ), )
     pickedRegions =(faces, )
-    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1_rb, elemType2_rb))
     session.viewports['Viewport: 1'].partDisplay.setValues(sectionAssignments=ON, 
         engineeringFeatures=ON, mesh=OFF)
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
@@ -519,7 +574,7 @@ def apply_material_properties(material_name, integration_points, blank_thickness
 
     regionDef=mdb.models['Model-1'].rootAssembly.sets['Set-5']
     mdb.models['Model-1'].HistoryOutputRequest(name='H-Output-2', 
-        createStepName='load', variables=('RF1', 'RF2', 'RF3', 'RM1', 'RM2', 
+        createStepName='load', variables=('U1', 'U2', 'U3', 'UR1', 'UR2', 'UR3','RF1', 'RF2', 'RF3', 'RM1', 'RM2', 
         'RM3'), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
 
     p = mdb.models['Model-1'].parts['blank']
@@ -530,22 +585,31 @@ def apply_material_properties(material_name, integration_points, blank_thickness
     a.regenerate()
     session.viewports['Viewport: 1'].setValues(displayedObject=a)
     mdb.models['Model-1'].FieldOutputRequest(name='F-Output-2', 
-        createStepName='load', variables=('STH', ), region=MODEL, 
+        createStepName='load', variables=('STH','S', 'MISES'), region=MODEL, 
         exteriorOnly=OFF, sectionPoints=DEFAULT, rebar=EXCLUDE)
 
     
-def run_sim_job(sim_out_path, nCPU):
+def run_sim_job(solver_type: SolverType, sim_out_path, nCPU):
 
     job_name = "stamping_sim"
 
-    mdb.Job(
-        name=job_name, model='Model-1', description='', type=ANALYSIS, 
-        atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
-        memoryUnits=PERCENTAGE, explicitPrecision=DOUBLE, 
-        nodalOutputPrecision=FULL, echoPrint=OFF, modelPrint=OFF, 
-        contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=sim_out_path,
-        resultsFormat=ODB, numCpus=nCPU, numDomains=nCPU, parallelizationMethodExplicit=DOMAIN
-    )
+    if solver_type == SolverType.EXPLICIT:
+        mdb.Job(
+            name=job_name, model='Model-1', description='', type=ANALYSIS, 
+            atTime=None, waitMinutes=0, waitHours=0, queue=None, memory=90, 
+            memoryUnits=PERCENTAGE, explicitPrecision=DOUBLE, 
+            nodalOutputPrecision=FULL, echoPrint=OFF, modelPrint=OFF, 
+            contactPrint=OFF, historyPrint=OFF, userSubroutine='', scratch=sim_out_path,
+            resultsFormat=ODB, numCpus=nCPU, numDomains=nCPU, parallelizationMethodExplicit=DOMAIN, numGPUs=1
+        )
+    elif solver_type == SolverType.STANDARD:
+        mdb.Job(
+            name=job_name, model='Model-1', 
+            description='', type=ANALYSIS, 
+            scratch=sim_out_path,
+            numCpus=nCPU, numDomains=nCPU, 
+            numGPUs=1
+        )
 
     mdb.jobs[job_name].submit()
 
@@ -637,10 +701,20 @@ def run_sim(input_dex: InputeDex):
     # set work directory
     os.chdir(input_dex.simulation_output_path)
 
+    if input_dex.solver_type == SolverType.EXPLICIT:
+        input_dex.solver_type = "explicit"
+    elif input_dex.solver_type == SolverType.STANDARD:
+        input_dex.solver_type = "standard"
+
     # save simulation param inputs
     input_dex_output_path = f"{input_dex.simulation_output_path}/inputs.json"
     with open(input_dex_output_path, "w") as file:
         dump(asdict(input_dex), file)
+
+    if input_dex.solver_type == "explicit":
+        input_dex.solver_type = SolverType.EXPLICIT
+    elif input_dex.solver_type == "standard":
+        input_dex.solver_type = SolverType.STANDARD
 
     # create blank
     create_blank_part(input_dex.blank_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
@@ -668,23 +742,23 @@ def run_sim(input_dex: InputeDex):
     create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.posissons_ratio, input_dex.plastic_material_data)
 
     # define surface interactions
-    create_surface_interactions()
+    create_surface_interactions(input_dex.solver_type)
 
     # loading and unloading phases
-    create_boundary_conditions(input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling)
+    create_boundary_conditions(input_dex.solver_type, input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling)
 
     # meshing
-    create_mesh(input_dex.mesh_size)
+    create_mesh(input_dex.solver_type, input_dex.mesh_size)
 
     apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness)
 
-    nCPU = 8
+    nCPU = 14
 
     # Save the model database (.cae) after simulation finishes
     cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
     mdb.saveAs(pathName=cae_path)
   
-    run_sim_job(input_dex.simulation_output_path, nCPU)
+    run_sim_job(input_dex.solver_type,input_dex.simulation_output_path, nCPU)
 
     # Save the model database (.cae) after simulation finishes
     cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
@@ -710,68 +784,269 @@ def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
 
         # Run the simulation
         run_sim(sim)
-        post_pro_section_thickness()
+        plt.close('all')
+        post_pro_thickness()
+        plot_thickness_variation()
+        post_pro_punch_reaction()
+        post_pro_energy()
+        plot_energy_data()
+        plot_rf_data()
+        energy_check()
+        post_pro_strain()
+        plot_strains()
 
 
 
-def post_pro_section_thickness():
-    
+def post_pro_thickness():
 
     # Get the current working directory
     cwd = os.getcwd()
 
-    # Find the ODB file in the current directory
-    odb_filename = "stamping_sim.odb"  # Modify if your ODB has a different name
+    # Find the ODB file
+    odb_filename = "stamping_sim.odb"
     odb_path = os.path.join(cwd, odb_filename)
 
     # Open the ODB
     odb = openOdb(odb_path)
 
-    # Get the last step dynamically
-    last_step_name = list(odb.steps.keys())[-1]
-    last_step = odb.steps[last_step_name]
-
     # Get the last frame dynamically
-    last_frame = last_step.frames[-1]  # Last frame
+    last_frame = odb.steps["load"].frames[-1]  # Last frame
 
-    # Extract section thickness (STH) from the last frame
-    if "STH" in last_frame.fieldOutputs:
-        sth_field = last_frame.fieldOutputs["STH"]
+    nodes_blank = odb.rootAssembly.instances["BLANK-1"].nodes
+
+    # Extract section thickness (STH) and coordinates
+    sth_field = last_frame.fieldOutputs["STH"]
+    displacement_field = last_frame.fieldOutputs["U"]
+
+    # Open file to save results
+    output_file = os.path.join(cwd, "thickness_results.csv")
+    with open(output_file, "w") as f:
+        f.write("ElementID,SectionThickness,RadialDistance\n")  # CSV header
         
-        # Open file to save results
-        output_file = os.path.join(cwd, "section_thickness_results.csv")
-        with open(output_file, "w") as f:
-            f.write("ElementID,SectionThickness\n")  # CSV header
+        # Loop through each element result in the field output
+        for (value_sth, value_nodes) in zip(sth_field.values, nodes_blank):
+            element_id = value_sth.elementLabel
+            thickness = value_sth.data
+            coord = value_nodes.coordinates
+
+            X = coord[0]
+            Y = coord[1]
+            radial_distance =  sqrt(X**2 + Y**2)
             
-            # Loop through each element result in the field output
-            for value in sth_field.values:
-                element_id = value.elementLabel  # Element ID
-                thickness = value.data  # Section thickness value
-                
-                # Write to file
-                f.write(f"{element_id},{thickness}\n")
-        
-        print(f"Section thickness data saved to {output_file}")
-
-    else:
-        print("Error: STH field output not found in the last frame.")
+            # Write to file
+            f.write(f"{element_id},{thickness},{radial_distance}\n")
+    
+    print("saved thickness data")
 
     # Close ODB
     odb.close()
 
 
+def post_pro_punch_reaction():
+
+    # Get the current working directory
+    cwd = os.getcwd()
+
+    # Find the ODB file
+    odb_filename = "stamping_sim.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    # Open the ODB
+    odb = openOdb(odb_path)
+
+    key = odb.steps["load"].historyRegions.keys()[-1]
+    rf_data = odb.steps["load"].historyRegions[key].historyOutputs["RF2"].data
+    rf_displacement = odb.steps["load"].historyRegions[key].historyOutputs["U2"].data
+
+    # Open file to save results
+    output_file = os.path.join(cwd, "reaction_force_results.csv")
+    with open(output_file, "w") as f:
+        f.write("time,displacement,rf\n")  # CSV header
+        
+        # Loop through each element result in the field output
+        for (value_rf, value_displacement) in zip(rf_data, rf_displacement):
+            
+            # Write to file
+            f.write(f"{value_rf[0]},{value_displacement[1]},{value_rf[1]}\n")
+    
+    print("saved reaction force data")
+
+    # Close ODB
+    odb.close()
+
+def post_pro_energy():
+
+    # Get the current working directory
+    cwd = os.getcwd()
+
+    # Find the ODB file
+    odb_filename = "stamping_sim.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    # Open the ODB
+    odb = openOdb(odb_path)
+
+    KE = odb.steps["load"].historyRegions["Assembly ASSEMBLY"].historyOutputs["ALLKE"]
+    IE = odb.steps["load"].historyRegions["Assembly ASSEMBLY"].historyOutputs["ALLIE"]
+
+    # Open file to save results
+    output_file = os.path.join(cwd, "energy_results.csv")
+    with open(output_file, "w") as f:
+        f.write("time,IE,KE\n")  # CSV header
+        
+        # Loop through each element result in the field output
+        for (ke_value, ie_value) in zip(KE.data, IE.data):
+            
+            # Write to file
+            f.write(f"{ke_value[0]},{ie_value[1]},{ke_value[1]}\n")
+    
+    print("saved energy data")
+
+    # Close ODB
+    odb.close()
+
+def plot_thickness_variation():
+
+    cwd = os.getcwd()
+
+    thickness_file_path = f"{cwd}/thickness_results.csv"
+
+    thickness_df = pandas.read_csv(thickness_file_path)
+
+    thickness_df =thickness_df.sort_values(by="RadialDistance")
+
+    plt.figure()
+
+    plt.scatter(thickness_df["RadialDistance"], thickness_df["SectionThickness"], s=2)
+    plt.xlabel("Radial Distance (mm)")
+    plt.ylabel("Thickness (mm)")
+    plt.grid(True)
+
+    plt.savefig("thickness_plot.png")
+ 
+
+def plot_rf_data():
+
+    cwd = os.getcwd()
+
+    rf_file_path = f"{cwd}/reaction_force_results.csv"
+
+    rf_df = pandas.read_csv(rf_file_path)
+
+    rf_df["displacement"] = rf_df["displacement"] * -1
+    rf_df["rf"] = rf_df["rf"] * -1e-3
+
+    plt.figure()
+
+    plt.plot(rf_df["displacement"], rf_df["rf"])
+    plt.xlabel("Displacement (mm)")
+    plt.ylabel("Reaction Force (KN)")
+    plt.grid(True)
+
+    plt.savefig("rf_plot.png")
+
+def plot_energy_data():
+
+    cwd = os.getcwd()
+
+    energy_file_path = f"{cwd}/energy_results.csv"
+
+    energy_df = pandas.read_csv(energy_file_path)
+
+    energy_df["IE"] = energy_df["IE"] / 1e3
+    energy_df["KE"] = energy_df["KE"] / 1e3
 
 
+    plt.figure()
+    plt.plot(energy_df["time"], energy_df["IE"])
+    plt.plot(energy_df["time"], energy_df["KE"])
+    plt.xlabel("Time (s)")
+    plt.ylabel("Energy (KJ)")
+    plt.legend(["IE", "KE"])
+    plt.grid(True)
+    
+    plt.savefig("energy_plot.png")
+
+def energy_check():
+
+    cwd = os.getcwd()
+
+    energy_file_path = f"{cwd}/energy_results.csv"
+
+    energy_df = pandas.read_csv(energy_file_path)
+
+    max_ke = max(energy_df["KE"]) 
+    max_ie = max(energy_df["IE"])
+
+    ke_ie_pct = max_ke * 100 / max_ie
+
+    with open("energy_check.txt", "w") as f:
+
+        f.write(f"ke/ie ratio = {round(ke_ie_pct, 4)}%")
+
+def post_pro_strain():
+
+    # Get the current working directory
+    cwd = os.getcwd()
+
+    # Find the ODB file
+    odb_filename = "stamping_sim.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    # Open the ODB
+    odb = openOdb(odb_path)
+
+    # Get the last frame dynamically
+    last_frame = odb.steps["load"].frames[-1]  # Last frame
+
+    # Extract section thickness (STH) and coordinates
+    true_strain_field = last_frame.fieldOutputs["LE"]
+
+    # Open file to save results
+    output_file = os.path.join(cwd, "strain_results.csv")
+    with open(output_file, "w") as f:
+        f.write("ElementID,LE11,LE22\n")  # CSV header
+        
+        # Loop through each element result in the field output
+        for value_strain in true_strain_field.values:
+            element_id = value_strain.elementLabel
+            strain_data = value_strain.data
+
+            # Write to file
+            f.write(f"{element_id},{strain_data[0]},{strain_data[1]}\n")
+    
+    print("saved strain data")
+
+    # Close ODB
+    odb.close()
+
+def plot_strains():
+
+    cwd = os.getcwd()
+
+    strain_file_path = f"{cwd}/strain_results.csv"
+
+    strain_df = pandas.read_csv(strain_file_path)
+
+    plt.figure()
+    plt.scatter(strain_df["LE22"], strain_df["LE11"], s=2)
+    plt.xlabel("minor strain (LE22)")
+    plt.ylabel("major strain (LE11)")
+    plt.grid(True)
+    
+    plt.savefig("strain_plot.png")
 
 
 def main():
 
     input_dex = InputeDex()
+
+    input_dex.solver_type = SolverType.STANDARD
     
     input_dex.all_part_rotation = 90
 
     # blank inputs
-    input_dex.blank_radius = 40
+    input_dex.blank_radius = 80
     input_dex.blank_thickness = 1.1
     input_dex.integration_points = 15
 
@@ -779,13 +1054,13 @@ def main():
     input_dex.die_height = 30
     input_dex.die_profile_radius = 6.5
     input_dex.die_min_radius = 22
-    input_dex.die_max_radius = 50
+    input_dex.die_max_radius = input_dex.blank_radius + 10
 
     # blank holder inputs
     input_dex.blank_holder_height = 10
     input_dex.blank_holder_profile_radius = 6.5
     input_dex.blank_holder_min_radius = 22
-    input_dex.blank_holder_max_radius = 50
+    input_dex.blank_holder_max_radius = input_dex.blank_radius + 10
     input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.5
 
     # punch inputs
@@ -911,7 +1186,7 @@ def main():
 
     # input dex 3
     input_dex_3: InputeDex = copy.deepcopy(input_dex)
-    input_dex_3.mesh_size = 1
+    input_dex_3.mesh_size = 2
 
     # input dex 4
     input_dex_4: InputeDex = copy.deepcopy(input_dex)
@@ -919,13 +1194,23 @@ def main():
 
     # input dex 5
     input_dex_5: InputeDex = copy.deepcopy(input_dex)
-    input_dex_5.mesh_size = 0.3
+    input_dex_5.mesh_size = 4
 
-    input_dex_set = [input_dex_5]
+    input_dex_set = [input_dex_3]
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp52"
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp66"
 
     run_batch_sim(input_dex_set, main_sim_output)
 
 if __name__ == "__main__":
     main()
+    # plt.close('all')
+    # post_pro_thickness()
+    # plot_thickness_variation()
+    # post_pro_punch_reaction()
+    # post_pro_energy()
+    # plot_energy_data()
+    # plot_rf_data()
+    # energy_check()
+    # post_pro_strain()
+    # plot_strains()
