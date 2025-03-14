@@ -19,6 +19,9 @@ import visualization
 import xyPlot
 import displayGroupOdbToolset as dgo
 import connectorBehavior
+from odbAccess import openOdb
+from abaqusConstants import *
+from odbAccess import *
 
 # other imports
 from dataclasses import dataclass, asdict
@@ -27,13 +30,12 @@ import time
 import os
 import copy
 import shutil
-from odbAccess import openOdb
-from abaqusConstants import *
 import matplotlib.pyplot as plt
 import numpy as np
-from odbAccess import *
 import pandas
 from enum import Enum
+import meshio
+import pyvista as pv
 
 SCRIPT_PARENT_PATH = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build"
 
@@ -50,10 +52,14 @@ class InputeDex:
     solver_type: SolverType = SolverType.STANDARD # options are "explicit" or "standard"
     all_part_rotation: int = 90 # degrees
 
+    cup_height: float = None # mm 
+
     # blank
     blank_radius: float = None # mm
     blank_thickness: float = None # mm
     integration_points: int = None
+
+    trim_depth: float = 5 # mm
 
     # die
     die_height: float = None # mm
@@ -87,6 +93,12 @@ class InputeDex:
 
     # mesh
     mesh_size: float = None # mm
+
+    # ideal part
+    cup_radius: float = None # mm
+    cup_height: float = None # mm
+    cup_profile_radius: float = None # mm
+
 
 def create_blank_part(blank_radius, blank_thickness, part_rotation):
 
@@ -162,9 +174,9 @@ def create_die_part(die_height, die_profile_radius, die_min_radius, die_max_radi
     s.Line(point1=(die_min_radius, 0.0), point2=(die_max_radius, 0.0))
     s.HorizontalConstraint(entity=g[4], addUndoState=False)
     s.PerpendicularConstraint(entity1=g[3], entity2=g[4], addUndoState=False)
-    s.FilletByRadius(radius=die_profile_radius, curve1=g[3], nearPoint1=(22.0425605773926, 
-        -5.69356918334961), curve2=g[4], nearPoint2=(27.7851066589355, 
-        -0.132408142089844))
+    s.FilletByRadius(radius=die_profile_radius, curve1=g[3], nearPoint1=(die_min_radius, 
+        (-1 * die_height)/2), curve2=g[4], nearPoint2=((die_max_radius+ die_min_radius)/2, 
+        0.0))
     p = mdb.models['Model-1'].Part(name="die", dimensionality=THREE_D, 
         type=DISCRETE_RIGID_SURFACE)
     p = mdb.models['Model-1'].parts["die"]
@@ -205,9 +217,9 @@ def create_blank_holder(blank_holder_height, blank_holder_profile_radius, blank_
     s1.Line(point1=(blank_holder_min_radius, blank_holder_die_gap), point2=(blank_holder_max_radius, blank_holder_die_gap))
     s1.HorizontalConstraint(entity=g[4], addUndoState=False)
     s1.PerpendicularConstraint(entity1=g[3], entity2=g[4], addUndoState=False)
-    s1.FilletByRadius(radius=blank_holder_profile_radius, curve1=g[3], nearPoint1=(21.9542121887207, 
-        5.60529708862305), curve2=g[4], nearPoint2=(27.6084175109863, 
-        1.36822128295898))
+    s1.FilletByRadius(radius=blank_holder_profile_radius, curve1=g[3], nearPoint1=(blank_holder_min_radius, 
+        (blank_holder_height+ 2* blank_holder_die_gap)/2), curve2=g[4], nearPoint2=((blank_holder_max_radius + blank_holder_min_radius)/2, 
+        blank_holder_die_gap))
     p = mdb.models['Model-1'].Part(name="blank_holder", dimensionality=THREE_D, 
         type=DISCRETE_RIGID_SURFACE)
     p = mdb.models['Model-1'].parts["blank_holder"]
@@ -248,9 +260,9 @@ def create_punch(punch_depth, punch_profile_radius, punch_min_radius, blank_thic
     s1.Line(point1=(punch_min_radius, blank_thickness), point2=(0.0, blank_thickness))
     s1.HorizontalConstraint(entity=g[4], addUndoState=False)
     s1.PerpendicularConstraint(entity1=g[3], entity2=g[4], addUndoState=False)
-    s1.FilletByRadius(radius=punch_profile_radius, curve1=g[3], nearPoint1=(20.0105857849121, 
-        9.13618850708008), curve2=g[4], nearPoint2=(15.7699317932129, 
-        1.72130966186523))
+    s1.FilletByRadius(radius=punch_profile_radius, curve1=g[3], nearPoint1=(punch_min_radius, 
+        (punch_depth + 2 * blank_thickness)/2), curve2=g[4], nearPoint2=(punch_min_radius/2, 
+        blank_thickness))
     p = mdb.models['Model-1'].Part(name="punch", dimensionality=THREE_D, 
         type=DISCRETE_RIGID_SURFACE)
     p = mdb.models['Model-1'].parts["punch"]
@@ -259,6 +271,49 @@ def create_punch(punch_depth, punch_profile_radius, punch_min_radius, blank_thic
     p = mdb.models['Model-1'].parts["punch"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models['Model-1'].sketches['__profile__']
+
+def create_ideal_part(cup_height, cup_profile_radius, cup_radius, part_rotation):
+
+    s1 = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
+        sheetSize=200.0)
+    g, v, d, c = s1.geometry, s1.vertices, s1.dimensions, s1.constraints
+    s1.setPrimaryObject(option=STANDALONE)
+    s1.ConstructionLine(point1=(0.0, -100.0), point2=(0.0, 100.0))
+    s1.FixedConstraint(entity=g[2])
+    s1.Line(point1=(cup_radius, cup_height), point2=(cup_radius, 0))
+    s1.VerticalConstraint(entity=g[3], addUndoState=False)
+    s1.Line(point1=(cup_radius, 0), point2=(0.0, 0))
+    s1.HorizontalConstraint(entity=g[4], addUndoState=False)
+    s1.PerpendicularConstraint(entity1=g[3], entity2=g[4], addUndoState=False)
+    s1.FilletByRadius(radius=cup_profile_radius, curve1=g[3], nearPoint1=(cup_radius, 
+        cup_height/2), curve2=g[4], nearPoint2=(cup_radius/2, 
+        0))
+    p = mdb.models['Model-1'].Part(name="idealpart", dimensionality=THREE_D, 
+        type=DEFORMABLE_BODY)
+    p = mdb.models['Model-1'].parts["idealpart"]
+    p.BaseShellRevolve(sketch=s1, angle=part_rotation, flipRevolveDirection=OFF)
+    s1.unsetPrimaryObject()
+    p = mdb.models['Model-1'].parts["idealpart"]
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    del mdb.models['Model-1'].sketches['__profile__']
+
+    # save mesh
+    p = mdb.models['Model-1'].parts["idealpart"]
+    p.seedPart(size=0.2, deviationFactor=0.1, minSizeFactor=0.1)
+    p.generateMesh()
+
+    session.viewports['Viewport: 1'].partDisplay.setValues(mesh=ON)
+    session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
+        meshTechnique=ON)
+    session.viewports['Viewport: 1'].partDisplay.geometryOptions.setValues(
+        referenceRepresentation=OFF)
+    p = mdb.models['Model-1'].parts['idealpart']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    print(f'{os.getcwd()}/ideal_part.obj')
+    session.writeOBJFile(
+        fileName=f'{os.getcwd()}/ideal_part.obj', 
+        canvasObjects= (session.viewports['Viewport: 1'], ))
+
 
 
 def punch_ref_point():
@@ -359,14 +414,14 @@ def create_surface_interactions(solver_type: SolverType):
                 interactionProperty='blank_holder_blank', initialClearance=OMIT, 
                 datumAxis=None, clearanceRegion=None)
         
-def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scaling):
+def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scaling, trim_buffer):
 
-    load_time = punch_depth / punch_speed
+    load_time = (punch_depth + trim_buffer) / punch_speed
 
     punch_release_speed = punch_speed
     blank_holder_release_speed = punch_release_speed * 0.5
 
-    release_height = punch_depth / 2
+    release_height = (punch_depth + trim_buffer) / 2
     unload_time = release_height / punch_release_speed
 
     if solver_type == SolverType.EXPLICIT:
@@ -382,7 +437,7 @@ def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scali
             name='load', 
             previous='Initial',
             timePeriod=load_time,
-            maxNumInc=1000,  # Adjust increment limit
+            maxNumInc=1000,
             initialInc=0.1, 
             maxInc=1.0, 
             nlgeom=ON
@@ -504,7 +559,7 @@ def create_mesh(solver_type: SolverType, mesh_size):
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     p = mdb.models['Model-1'].parts['blank']
     p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
-    edges = p.edges.getByBoundingBox(-5, -5, -10, 5, 5, 10)  # Select inner edges
+    edges = p.edges.getByBoundingBox(-5, -5, -10, 5, 5, 10) 
     p.seedEdgeBySize(edges=edges, size=mesh_size / 3, constraint=FIXED)
 
 
@@ -585,7 +640,7 @@ def apply_material_properties(material_name, integration_points, blank_thickness
     a.regenerate()
     session.viewports['Viewport: 1'].setValues(displayedObject=a)
     mdb.models['Model-1'].FieldOutputRequest(name='F-Output-2', 
-        createStepName='load', variables=('STH','S', 'MISES'), region=MODEL, 
+        createStepName='load', variables=('S','MISES', 'PEEQ', 'STH'), region=MODEL, 
         exteriorOnly=OFF, sectionPoints=DEFAULT, rebar=EXCLUDE)
 
     
@@ -672,6 +727,12 @@ def spring_back_analysis(sim_out_path, nCPU):
         distributionType=UNIFORM, fieldName='', localCsys=None)
     instances=(mdb.models['Model-1-spring_back'].rootAssembly.instances['blank-1'], 
         )
+
+    mdb.models['Model-1'].FieldOutputRequest(name='F-Output-1', 
+        createStepName='load', variables=('S','MISES', 'PEEQ', 'U'), region=MODEL, 
+        exteriorOnly=OFF, sectionPoints=DEFAULT, rebar=EXCLUDE)
+
+
     mdb.models['Model-1-spring_back'].InitialState(
         updateReferenceConfiguration=ON, fileName='stamping_sim', 
         endStep=LAST_STEP, endIncrement=STEP_END, name='Predefined Field-1', 
@@ -735,6 +796,9 @@ def run_sim(input_dex: InputeDex):
     punch_ref_point()
     create_punch_surface()
 
+    # create ideal part
+    create_ideal_part(input_dex.cup_height, input_dex.cup_profile_radius, input_dex.cup_radius, input_dex.all_part_rotation)
+
     # assemble parts
     create_part_assembly()
 
@@ -745,30 +809,28 @@ def run_sim(input_dex: InputeDex):
     create_surface_interactions(input_dex.solver_type)
 
     # loading and unloading phases
-    create_boundary_conditions(input_dex.solver_type, input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling)
+    create_boundary_conditions(input_dex.solver_type, input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling, input_dex.trim_depth)
 
     # meshing
     create_mesh(input_dex.solver_type, input_dex.mesh_size)
 
     apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness)
 
-    nCPU = 14
+    # nCPU = 14 # vis suite
+    nCPU = 4
 
-    # Save the model database (.cae) after simulation finishes
-    cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
-    mdb.saveAs(pathName=cae_path)
+    # cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    # mdb.saveAs(pathName=cae_path)
   
-    run_sim_job(input_dex.solver_type,input_dex.simulation_output_path, nCPU)
+    # run_sim_job(input_dex.solver_type,input_dex.simulation_output_path, nCPU)
 
-    # Save the model database (.cae) after simulation finishes
-    cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
-    mdb.saveAs(pathName=cae_path)
+    # cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    # mdb.saveAs(pathName=cae_path)
 
-    spring_back_analysis(input_dex.simulation_output_path, nCPU)
+    # spring_back_analysis(input_dex.simulation_output_path, nCPU)
 
-    # Save the model database (.cae) after simulation finishes
-    cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
-    mdb.saveAs(pathName=cae_path)
+    # cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    # mdb.saveAs(pathName=cae_path)
 
 
 def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
@@ -776,54 +838,82 @@ def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
     os.makedirs(main_sim_path, exist_ok=False) 
 
     for i, sim in enumerate(batch, start=1):
-        # Create a unique path for each simulation
         sim.simulation_output_path = os.path.join(main_sim_path, f"sim_{i}")
 
-        # Ensure the simulation directory exists
         os.makedirs(sim.simulation_output_path, exist_ok=False)
 
-        # Run the simulation
         run_sim(sim)
-        plt.close('all')
-        post_pro_thickness()
-        plot_thickness_variation()
-        post_pro_punch_reaction()
-        post_pro_energy()
-        plot_energy_data()
-        plot_rf_data()
-        energy_check()
-        post_pro_strain()
-        plot_strains()
+        # plt.close('all')
+        # post_pro_thickness()
+        # plot_thickness_variation()
+        # post_pro_punch_reaction()
+        # post_pro_energy()
+        # plot_energy_data()
+        # plot_rf_data()
+        # energy_check()
+        # post_pro_strain()
+        # plot_strains()
+        # post_pro_strain_eq()
+        # post_pro_misses_stress()
+        # post_pro_spring_back_dev()
 
+        # # compare final stamped shape 
+        # export_final_node_positions(sim.trim_depth)
+        # compare_meshes()
 
+def compare_meshes():
+
+    ideal_mesh = pv.read("ideal_part.obj")
+
+    data = np.loadtxt("trim_results.csv", delimiter=",", skiprows=1)
+    points = data[:, 1:4]
+    stamped_mesh = pv.PolyData(points)
+
+    stamped_mesh_aligned = stamped_mesh.align(ideal_mesh)
+
+    _, closest_points = stamped_mesh_aligned.find_closest_cell(ideal_mesh.points, return_closest_point=True)
+
+    distances = np.linalg.norm(ideal_mesh.points - closest_points, axis=1)
+
+    rmse = np.sqrt(np.mean(distances**2))
+    max_deviation = np.max(distances)
+
+    print(f"RMSE: {rmse:.2f} mm")
+    print(f"Max Deviation: {max_deviation:.2f} mm")
+
+    with open("compare_stamped_shape.txt", "w") as f:
+
+        f.write("RMSE,max deviation\n")
+        f.write(f"{rmse},{max_deviation}")
+
+    # Plot the aligned meshes
+    # plotter = pv.Plotter()
+    # plotter.add_mesh(ideal_mesh, color="blue", opacity=0.5, label="Ideal Mesh")
+    # plotter.add_mesh(stamped_mesh_aligned, color="red", opacity=0.5, label="Stamped Mesh (Aligned)")
+    # plotter.add_legend()
+    # plotter.show()
+        
 
 def post_pro_thickness():
 
-    # Get the current working directory
     cwd = os.getcwd()
 
-    # Find the ODB file
     odb_filename = "stamping_sim.odb"
     odb_path = os.path.join(cwd, odb_filename)
 
-    # Open the ODB
     odb = openOdb(odb_path)
 
-    # Get the last frame dynamically
     last_frame = odb.steps["load"].frames[-1]  # Last frame
 
     nodes_blank = odb.rootAssembly.instances["BLANK-1"].nodes
 
-    # Extract section thickness (STH) and coordinates
     sth_field = last_frame.fieldOutputs["STH"]
     displacement_field = last_frame.fieldOutputs["U"]
 
-    # Open file to save results
     output_file = os.path.join(cwd, "thickness_results.csv")
     with open(output_file, "w") as f:
         f.write("ElementID,SectionThickness,RadialDistance\n")  # CSV header
         
-        # Loop through each element result in the field output
         for (value_sth, value_nodes) in zip(sth_field.values, nodes_blank):
             element_id = value_sth.elementLabel
             thickness = value_sth.data
@@ -833,71 +923,56 @@ def post_pro_thickness():
             Y = coord[1]
             radial_distance =  sqrt(X**2 + Y**2)
             
-            # Write to file
             f.write(f"{element_id},{thickness},{radial_distance}\n")
     
     print("saved thickness data")
 
-    # Close ODB
     odb.close()
 
 
 def post_pro_punch_reaction():
 
-    # Get the current working directory
     cwd = os.getcwd()
 
-    # Find the ODB file
     odb_filename = "stamping_sim.odb"
     odb_path = os.path.join(cwd, odb_filename)
 
-    # Open the ODB
     odb = openOdb(odb_path)
 
     key = odb.steps["load"].historyRegions.keys()[-1]
     rf_data = odb.steps["load"].historyRegions[key].historyOutputs["RF2"].data
     rf_displacement = odb.steps["load"].historyRegions[key].historyOutputs["U2"].data
 
-    # Open file to save results
     output_file = os.path.join(cwd, "reaction_force_results.csv")
     with open(output_file, "w") as f:
         f.write("time,displacement,rf\n")  # CSV header
         
-        # Loop through each element result in the field output
         for (value_rf, value_displacement) in zip(rf_data, rf_displacement):
             
-            # Write to file
             f.write(f"{value_rf[0]},{value_displacement[1]},{value_rf[1]}\n")
     
     print("saved reaction force data")
 
-    # Close ODB
     odb.close()
 
 def post_pro_energy():
 
-    # Get the current working directory
     cwd = os.getcwd()
 
-    # Find the ODB file
     odb_filename = "stamping_sim.odb"
     odb_path = os.path.join(cwd, odb_filename)
 
-    # Open the ODB
     odb = openOdb(odb_path)
 
     KE = odb.steps["load"].historyRegions["Assembly ASSEMBLY"].historyOutputs["ALLKE"]
     IE = odb.steps["load"].historyRegions["Assembly ASSEMBLY"].historyOutputs["ALLIE"]
 
-    # Open file to save results
     output_file = os.path.join(cwd, "energy_results.csv")
     with open(output_file, "w") as f:
         f.write("time,IE,KE\n")  # CSV header
         
-        # Loop through each element result in the field output
         for (ke_value, ie_value) in zip(KE.data, IE.data):
             
-            # Write to file
             f.write(f"{ke_value[0]},{ie_value[1]},{ke_value[1]}\n")
     
     print("saved energy data")
@@ -986,33 +1061,25 @@ def energy_check():
 
 def post_pro_strain():
 
-    # Get the current working directory
     cwd = os.getcwd()
 
-    # Find the ODB file
     odb_filename = "stamping_sim.odb"
     odb_path = os.path.join(cwd, odb_filename)
 
-    # Open the ODB
     odb = openOdb(odb_path)
 
-    # Get the last frame dynamically
     last_frame = odb.steps["load"].frames[-1]  # Last frame
 
-    # Extract section thickness (STH) and coordinates
     true_strain_field = last_frame.fieldOutputs["LE"]
 
-    # Open file to save results
     output_file = os.path.join(cwd, "strain_results.csv")
     with open(output_file, "w") as f:
         f.write("ElementID,LE11,LE22\n")  # CSV header
         
-        # Loop through each element result in the field output
         for value_strain in true_strain_field.values:
             element_id = value_strain.elementLabel
             strain_data = value_strain.data
 
-            # Write to file
             f.write(f"{element_id},{strain_data[0]},{strain_data[1]}\n")
     
     print("saved strain data")
@@ -1036,6 +1103,143 @@ def plot_strains():
     
     plt.savefig("strain_plot.png")
 
+def post_pro_strain_eq():
+
+    cwd = os.getcwd()
+
+    odb_filename = "stamping_sim.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    odb = openOdb(odb_path)
+
+    last_frame = odb.steps["load"].frames[-1]  # Last frame
+
+    strain_field = last_frame.fieldOutputs["PEEQ"]
+
+    output_file = os.path.join(cwd, "strain_eq_results.csv")
+    with open(output_file, "w") as f:
+        f.write("ElementID,PEEQ\n")  # CSV header
+        
+        for strain_value in strain_field.values:
+            element_id = strain_value.elementLabel
+            peeq = strain_value.data
+
+            
+            f.write(f"{element_id},{peeq}\n")
+    
+    print("saved peeq data")
+
+    # Close ODB
+    odb.close()
+
+def post_pro_misses_stress():
+
+
+    cwd = os.getcwd()
+
+    odb_filename = "stamping_sim.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    odb = openOdb(odb_path)
+
+    last_frame = odb.steps["load"].frames[-1]  # Last frame
+
+    stress_field = last_frame.fieldOutputs['S']
+
+    mises_field = stress_field.getScalarField(invariant=MISES)
+
+    output_file = os.path.join(cwd, "mises_stress_results.csv")
+    with open(output_file, "w") as f:
+        f.write("ElementID,MISES\n")
+        
+        for mises_value in mises_field.values:
+            element_id = mises_value.elementLabel
+            mises = mises_value.data
+
+            
+            f.write(f"{element_id},{mises}\n")
+    
+    print("saved mises stress data")
+
+    odb.close()
+
+def post_pro_spring_back_dev():
+
+    cwd = os.getcwd()
+
+    odb_filename = "spring_back.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    odb = openOdb(odb_path)
+
+    last_frame = odb.steps["Step-1"].frames[-1]  # Last frame
+
+    displacement_field = last_frame.fieldOutputs['U']
+
+    displacement_mag_field = displacement_field.getScalarField(invariant=MAGNITUDE)
+
+
+    output_file = os.path.join(cwd, "springback_displacement_results.csv")
+    with open(output_file, "w") as f:
+        f.write("ElementID,U_mag,X,Y,Z\n")
+        
+        for (dis_value, mag_value) in zip(displacement_field.values, displacement_mag_field.values ):
+            element_id = dis_value.elementLabel
+            X = dis_value.dataDouble[0]
+            Y = dis_value.dataDouble[1]
+            Z = dis_value.dataDouble[2]
+            mag = mag_value.data
+
+            
+            f.write(f"{element_id},{mag},{X},{Y},{Z}\n")
+    
+    print("saved springback displacement data")
+
+    odb.close()
+
+
+
+def export_final_node_positions(trim_depth):
+
+    cwd = os.getcwd()
+
+    odb_filename = "spring_back.odb"
+    odb_path = os.path.join(cwd, odb_filename)
+
+    odb = openOdb(odb_path)
+
+    last_step = odb.steps["Step-1"]
+
+    last_frame = last_step.frames[-1]
+
+    disp_field = last_frame.fieldOutputs['U']
+
+    nodes_blank = odb.rootAssembly.instances["BLANK-1"].nodes
+
+    output_file = os.path.join(cwd, "trim_results.csv")
+    with open(output_file, "w") as f:
+        f.write("NodeLabel,X,Y,Z\n")
+
+        for (value, node_value) in zip(disp_field.values, nodes_blank):
+            node_label = value.nodeLabel
+            x_displacement = value.dataDouble[0]  # U1
+            y_displacement = value.dataDouble[1]  # U2
+            z_displacement = value.dataDouble[2]  # U3
+
+            x_initial, y_initial, z_initial = node_value.coordinates
+
+            x_new = x_initial + x_displacement
+            y_new = y_initial + y_displacement
+            z_new = z_initial + z_displacement
+
+            if y_new < -1 * trim_depth:
+
+                f.write(f"{node_label},{x_new},{y_new},{z_new}\n")
+
+    odb.close()
+
+    print("saved trimmed mesh")
+
 
 def main():
 
@@ -1045,28 +1249,35 @@ def main():
     
     input_dex.all_part_rotation = 90
 
+    # ideal part dimensions
+    input_dex.cup_radius = 30
+    input_dex.cup_height = 30
+    input_dex.cup_profile_radius = 5
+
     # blank inputs
-    input_dex.blank_radius = 80
+    input_dex.blank_radius = 50
     input_dex.blank_thickness = 1.1
     input_dex.integration_points = 15
 
+    # punch inputs
+    input_dex.punch_profile_radius = 5 # 5
+    input_dex.punch_min_radius = 30
+
     # die inputs
-    input_dex.die_height = 30
     input_dex.die_profile_radius = 6.5
-    input_dex.die_min_radius = 22
+    input_dex.die_min_radius = 32
     input_dex.die_max_radius = input_dex.blank_radius + 10
 
     # blank holder inputs
     input_dex.blank_holder_height = 10
     input_dex.blank_holder_profile_radius = 6.5
-    input_dex.blank_holder_min_radius = 22
+    input_dex.blank_holder_min_radius = 32
     input_dex.blank_holder_max_radius = input_dex.blank_radius + 10
     input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.5
 
-    # punch inputs
-    input_dex.punch_depth = 10
-    input_dex.punch_profile_radius = 5 # 5
-    input_dex.punch_min_radius = 20
+    # punch
+    input_dex.punch_depth = input_dex.cup_height + input_dex.trim_depth + input_dex.die_profile_radius
+    input_dex.die_height = input_dex.punch_depth + 10
 
     # material inputs
     input_dex.blank_material_name = "AA1050"
@@ -1174,7 +1385,6 @@ def main():
     
     # BCs
     input_dex.punch_velocity = 10
-    input_dex.punch_depth = 20
     input_dex.mass_scalling = 5e-6
 
     # mesh
@@ -1198,12 +1408,20 @@ def main():
 
     input_dex_set = [input_dex_3]
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp66"
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp101"
+    # main_sim_output =  r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92"
 
     run_batch_sim(input_dex_set, main_sim_output)
 
 if __name__ == "__main__":
     main()
+    # export_final_node_positions(0)
+    # os.chdir(r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92\sim_1")
+    # compare_meshes()
+    
+    # post_pro_strain_eq()
+    # post_pro_misses_stress()
+    # post_pro_spring_back_dev()
     # plt.close('all')
     # post_pro_thickness()
     # plot_thickness_variation()
