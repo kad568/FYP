@@ -95,8 +95,12 @@ class InputeDex:
     punch_depth: float = None # mm
     mass_scalling:float = None
 
+    # interaction properties
+    friction_coefficient: float = None
+
     # mesh
     mesh_size: float = None # mm
+    local_mesh_size: float = None # mm
 
     # ideal part
     ideal_cup_radius: float = None # mm
@@ -359,12 +363,31 @@ def create_blank_material(blank_material_name, density, youngs_modulus, posisson
         table=plastic_material_data)
 
 
-def create_surface_interactions(solver_type: SolverType):
+def create_surface_interactions(solver_type: SolverType, friction_coefficient):
+
+
 
     # create interaction properties
     mdb.models['Model-1'].ContactProperty('die_blank')
     mdb.models['Model-1'].ContactProperty('punch_blank')
     mdb.models['Model-1'].ContactProperty('blank_holder_blank')
+
+    mdb.models['Model-1'].interactionProperties['blank_holder_blank'].TangentialBehavior(
+        formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
+        pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
+        table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
+        fraction=0.005, elasticSlipStiffness=None)
+    
+    mdb.models['Model-1'].interactionProperties['die_blank'].TangentialBehavior(
+        formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
+        pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
+        table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
+        fraction=0.005, elasticSlipStiffness=None)
+    mdb.models['Model-1'].interactionProperties['punch_blank'].TangentialBehavior(
+        formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
+        pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
+        table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
+        fraction=0.005, elasticSlipStiffness=None)
 
     # die blank interaction
     a = mdb.models['Model-1'].rootAssembly
@@ -506,7 +529,7 @@ def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scali
         vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
         fieldName='')
 
-def create_mesh(solver_type: SolverType, mesh_size):
+def create_mesh(solver_type: SolverType, mesh_size, local_seeding_size):
 
     if solver_type == SolverType.EXPLICIT:
         
@@ -590,7 +613,7 @@ def create_mesh(solver_type: SolverType, mesh_size):
     pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
     p.setMeshControls(regions=pickedRegions, technique=SWEEP)
     p = mdb.models['Model-1'].parts['blank']
-    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
+    p.seedPart(size=local_seeding_size, deviationFactor=0.1, minSizeFactor=0.1)
     p.generateMesh()
 
     p1 = mdb.models['Model-1'].parts['punch']
@@ -612,6 +635,46 @@ def create_mesh(solver_type: SolverType, mesh_size):
         engineeringFeatures=OFF, mesh=ON)
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
         meshTechnique=ON)
+
+    ## local seeding
+    p = mdb.models['Model-1'].parts['punch']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#2 ]', ), )
+    p.deleteMesh(regions=pickedRegions)
+    p = mdb.models['Model-1'].parts['punch']
+    e = p.edges
+    pickedEdges = e.getSequenceFromMask(mask=('[#8 ]', ), )
+    p.seedEdgeBySize(edges=pickedEdges, size=local_seeding_size, deviationFactor=0.1, 
+        minSizeFactor=0.1, constraint=FINER)
+    p = mdb.models['Model-1'].parts['punch']
+    p.generateMesh()
+
+    # die local seeding
+    p = mdb.models['Model-1'].parts['die']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#2 ]', ), )
+    p.deleteMesh(regions=pickedRegions)
+    p = mdb.models['Model-1'].parts['die']
+    e = p.edges
+    pickedEdges = e.getSequenceFromMask(mask=('[#10 ]', ), )
+    p.seedEdgeBySize(edges=pickedEdges, size=local_seeding_size, deviationFactor=0.1, 
+        minSizeFactor=0.1, constraint=FINER)
+    p = mdb.models['Model-1'].parts['die']
+    p.generateMesh()
+
+    # blankholder local seeding
+    p = mdb.models['Model-1'].parts['blank_holder']
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#2 ]', ), )
+    p.deleteMesh(regions=pickedRegions)
+    p = mdb.models['Model-1'].parts['blank_holder']
+    e = p.edges
+    pickedEdges = e.getSequenceFromMask(mask=('[#10 ]', ), )
+    p.seedEdgeBySize(edges=pickedEdges, size=local_seeding_size, deviationFactor=0.1, 
+        minSizeFactor=0.1, constraint=FINER)
+    p = mdb.models['Model-1'].parts['blank_holder']
+    p.generateMesh()
+
     
 def apply_material_properties(material_name, integration_points, blank_thickness):
 
@@ -767,21 +830,9 @@ def spring_back_analysis(sim_out_path, nCPU):
 
 def run_sim(input_dex: InputeDex):
     
-    # reste abaqus
+    # reset abaqus
 
-    # Mdb()
-
-    try:
-        if "Model-1" in mdb.models:
-            del mdb.models["Model-1"]
-        mdb.Model(name="Model-1") 
-
-        if "Model-1-spring_back" in mdb.models:
-            del mdb.models["Model-1-spring_back"]
-        mdb.Model(name="Model-1-spring_back") 
-    except:
-        pass
-
+    Mdb()
     session.viewports['Viewport: 1'].setValues(displayedObject=None)
 
     # set work directory
@@ -831,13 +882,13 @@ def run_sim(input_dex: InputeDex):
     create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.posissons_ratio, input_dex.plastic_material_data)
 
     # define surface interactions
-    create_surface_interactions(input_dex.solver_type)
+    create_surface_interactions(input_dex.solver_type, input_dex.friction_coefficient)
 
     # loading and unloading phases
     create_boundary_conditions(input_dex.solver_type, input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling, input_dex.trim_depth)
 
     # meshing
-    create_mesh(input_dex.solver_type, input_dex.mesh_size)
+    create_mesh(input_dex.solver_type, input_dex.mesh_size, input_dex.local_mesh_size)
 
     apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness)
 
@@ -919,8 +970,6 @@ def compare_meshes():
         f.write("RMSE,max deviation\n")
         f.write(f"{rmse},{max_deviation}")
 
-    return rmse, max_deviation
-
     # # Plot the aligned meshes
     # plotter = pv.Plotter()
     # plotter.add_mesh(ideal_mesh, color="blue", opacity=0.5, label="Ideal Mesh")
@@ -950,6 +999,8 @@ def compare_meshes():
     # # plotter.add_mesh(ideal_mesh, color="white", opacity=0.3, label="Ideal Mesh")
     # plotter.add_scalar_bar(title="Deviation Distance (mm)")
     # plotter.show()
+
+    return rmse, max_deviation
 
 def post_pro_thickness():
 
@@ -1328,7 +1379,7 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     input_dex.ideal_cup_profile_radius = ideal_cup_profile_radius
 
     # blank inputs
-    input_dex.blank_radius = 50
+    input_dex.blank_radius = 40
     input_dex.blank_thickness = 1.1
     input_dex.integration_points = 15
 
@@ -1346,7 +1397,7 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     input_dex.blank_holder_profile_radius = 6.5
     input_dex.blank_holder_min_radius = input_dex.die_min_radius
     input_dex.blank_holder_max_radius = input_dex.blank_radius + 5
-    input_dex.blank_holder_die_gap = input_dex.blank_thickness + 1
+    input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.5
 
     # punch
     input_dex.punch_depth = punch_depth
@@ -1460,12 +1511,15 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     input_dex.punch_velocity = 10
     input_dex.mass_scalling = 5e-6
 
+    input_dex.friction_coefficient = 0.15
+
     # mesh
-    input_dex.mesh_size = 4
+    input_dex.mesh_size = 3
+    input_dex.local_mesh_size = 2
 
     input_dex_set = [input_dex]
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\sim_optimisation/1"
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\sim_op_2/1"
     # main_sim_output =  r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92"
 
     def get_sim_out_path(main_sim_output):
@@ -1871,8 +1925,11 @@ def main():
     input_dex.punch_velocity = 15
     input_dex.mass_scalling = 5e-6
 
+    input_dex.friction_coefficient = 0.15
+
     # mesh
-    input_dex.mesh_size = 1
+    input_dex.mesh_size = 2
+    input_dex.local_mesh_size = 0.75
 
     # input dex 2
     input_dex_2: InputeDex = copy.deepcopy(input_dex)
@@ -1888,12 +1945,15 @@ def main():
 
     # input dex 5
     input_dex_5: InputeDex = copy.deepcopy(input_dex)
-    input_dex_5.mesh_size = 0.8
+    input_dex_5.mesh_size = 0.75
+
+    # input dex 5
+    input_dex_6: InputeDex = copy.deepcopy(input_dex)
+    input_dex_6.mesh_size = 0.3
 
     input_dex_set = [input_dex]
-    # input_dex_set = [input_dex, input_dex_2, input_dex_3, input_dex_4, input_dex_5]
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp110"
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp140"
     # main_sim_output =  r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92"
 
     run_batch_sim(input_dex_set, main_sim_output)
@@ -1905,6 +1965,9 @@ if __name__ == "__main__":
     # cup_baysien_optimisation()
 
     # main()
+
+    # create_mesh(SolverType.STANDARD, 2)
+
 
     # export_final_node_positions(41.5, 30)
     # os.chdir(r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp103\sim_1")
