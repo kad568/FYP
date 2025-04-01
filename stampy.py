@@ -21,8 +21,8 @@ import displayGroupOdbToolset as dgo
 import connectorBehavior
 from odbAccess import openOdb
 from abaqusConstants import *
+from symbolicConstants import *
 from odbAccess import *
-
 # other imports
 from dataclasses import dataclass, asdict
 from json import dump
@@ -93,7 +93,8 @@ class InputeDex:
     # BCs
     punch_velocity: float = None # mm/s
     punch_depth: float = None # mm
-    mass_scalling:float = None
+    mass_scalling: float = None
+    BHF: float = None # N
 
     # interaction properties
     friction_coefficient: float = None
@@ -139,15 +140,15 @@ def create_blank_part(blank_radius, blank_thickness, part_rotation):
     p = mdb.models['Model-1'].parts['blank']
     f, e1, d2 = p.faces, p.edges, p.datums
     t = p.MakeSketchTransform(sketchPlane=f[0], sketchUpEdge=e1[1], 
-        sketchPlaneSide=SIDE1, origin=(16.976527, 0.55, 16.976527))
+        sketchPlaneSide=SIDE1, origin=(0, blank_thickness/2, 0))
     s = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
         sheetSize=113.14, gridSpacing=2.82, transform=t)
     g, v, d, c = s.geometry, s.vertices, s.dimensions, s.constraints
     s.setPrimaryObject(option=SUPERIMPOSE)
     p = mdb.models['Model-1'].parts['blank']
     p.projectReferencesOntoSketch(sketch=s, filter=COPLANAR_EDGES)
-    s.CircleByCenterPerimeter(center=(16.976527, -16.976527), point1=(8.46, 
-        -7.755)) # change inner circle radius
+    s.CircleByCenterPerimeter(center=(0, 0), point1=(10, 
+        0)) # change inner circle radius
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
     pickedFaces = f.getSequenceFromMask(mask=('[#1 ]', ), )
@@ -156,17 +157,80 @@ def create_blank_part(blank_radius, blank_thickness, part_rotation):
     s.unsetPrimaryObject()
     del mdb.models['Model-1'].sketches['__profile__']
 
+    if part_rotation == 360:
 
-def create_blank_surfaces():
+        strip_start_radius = 20
+        strip_end_radius = 25
 
-    p = mdb.models['Model-1'].parts['blank']
-    s = p.faces
-    side2Faces = s.getSequenceFromMask(mask=('[#3 ]', ), )
-    p.Surface(side2Faces=side2Faces, name='blank_top_surface')
-    p = mdb.models['Model-1'].parts['blank']
-    s = p.faces
-    side1Faces = s.getSequenceFromMask(mask=('[#3 ]', ), )
-    p.Surface(side1Faces=side1Faces, name='blank_bottom_surface')
+        p = mdb.models['Model-1'].parts['blank']
+        f1, e1, d2 = p.faces, p.edges, p.datums
+        t = p.MakeSketchTransform(sketchPlane=f1[0], sketchUpEdge=e1[3], 
+            sketchPlaneSide=SIDE1, origin=(0.0, blank_thickness/2, 0.0))
+        s1 = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
+            sheetSize=310.7, gridSpacing=7.76, transform=t)
+        g, v, d, c = s1.geometry, s1.vertices, s1.dimensions, s1.constraints
+        s1.setPrimaryObject(option=SUPERIMPOSE)
+        p = mdb.models['Model-1'].parts['blank']
+        p.projectReferencesOntoSketch(sketch=s1, filter=COPLANAR_EDGES)
+        s1.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(strip_start_radius, 0))
+        s1.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(strip_end_radius, 0))
+        p = mdb.models['Model-1'].parts['blank']
+        f = p.faces
+        pickedFaces = f.getSequenceFromMask(mask=('[#3 ]', ), )
+        e, d1 = p.edges, p.datums
+        p.PartitionFaceBySketch(sketchUpEdge=e[3], faces=pickedFaces, sketch=s1)
+        s1.unsetPrimaryObject()
+        del mdb.models['Model-1'].sketches['__profile__']
+
+        p = mdb.models['Model-1'].parts['blank']
+        f = p.faces
+        pickedRegions = f.getSequenceFromMask(mask=('[#8 ]', ), )
+        p = mdb.models['Model-1'].parts['blank']
+        f, e, d1 = p.faces, p.edges, p.datums
+        t = p.MakeSketchTransform(sketchPlane=f[0], sketchUpEdge=e[7], 
+            sketchPlaneSide=SIDE1, origin=(0.0, blank_thickness/2, 0.0))
+        s = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
+            sheetSize=225.65, gridSpacing=5.64, transform=t)
+        g, v, d, c = s.geometry, s.vertices, s.dimensions, s.constraints
+        s.setPrimaryObject(option=SUPERIMPOSE)
+        p = mdb.models['Model-1'].parts['blank']
+        p.projectReferencesOntoSketch(sketch=s, filter=COPLANAR_EDGES)
+
+        s.Line(point1=(0.0, 0.0), point2=(-1 * blank_radius, 0))
+        s.VerticalConstraint(entity=g[21], addUndoState=False)
+        p = mdb.models['Model-1'].parts['blank']
+        f = p.faces
+        pickedFaces = f.getSequenceFromMask(mask=('[#f ]', ), )
+        e1, d2 = p.edges, p.datums
+        p.PartitionFaceBySketch(sketchUpEdge=e1[9], faces=pickedFaces, sketch=s)
+        s.unsetPrimaryObject()
+        del mdb.models['Model-1'].sketches['__profile__']
+
+
+
+def create_blank_surfaces(part_rotation):
+
+    if part_rotation == 360:
+
+        p = mdb.models['Model-1'].parts['blank']
+        s = p.faces
+        side2Faces = s.getSequenceFromMask(mask=('[#ff ]', ), )
+        p.Surface(side2Faces=side2Faces, name='blank_top_surface')
+        p = mdb.models['Model-1'].parts['blank']
+        s = p.faces
+        side1Faces = s.getSequenceFromMask(mask=('[#ff ]', ), )
+        p.Surface(side1Faces=side1Faces, name='blank_bottom_surface')
+
+    else:
+
+        p = mdb.models['Model-1'].parts['blank']
+        s = p.faces
+        side2Faces = s.getSequenceFromMask(mask=('[#f ]', ), )
+        p.Surface(side2Faces=side2Faces, name='blank_top_surface')
+        p = mdb.models['Model-1'].parts['blank']
+        s = p.faces
+        side1Faces = s.getSequenceFromMask(mask=('[#f ]', ), )
+        p.Surface(side1Faces=side1Faces, name='blank_bottom_surface')
 
 
 def create_die_part(die_height, die_profile_radius, die_min_radius, die_max_radius, part_rotation):
@@ -195,21 +259,29 @@ def create_die_part(die_height, die_profile_radius, die_min_radius, die_max_radi
     del mdb.models['Model-1'].sketches['__profile__']
 
 
-def create_die_surface():
+def create_die_surface(all_part_rotation):
 
     p1 = mdb.models['Model-1'].parts["die"]
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
     p = mdb.models['Model-1'].parts["die"]
     s = p.faces
-    side2Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
-    p.Surface(side2Faces=side2Faces, name="die_surface")
+    side1Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
+    if all_part_rotation == 360:
+        p.Surface(side1Faces=side1Faces, name="die_surface")
+    else:
+        p.Surface(side2Faces=side1Faces, name="die_surface")
 
 
-def die_ref_point():
+
+def die_ref_point(all_part_rotation):
 
     p = mdb.models['Model-1'].parts["die"]
     v1, e, d1, n = p.vertices, p.edges, p.datums, p.nodes
-    p.ReferencePoint(point=v1[6])
+
+    if all_part_rotation == 360:
+        p.ReferencePoint(point=v1[0])
+    else:
+        p.ReferencePoint(point=v1[6])
 
 
 def create_blank_holder(blank_holder_height, blank_holder_profile_radius, blank_holder_min_radius, blank_holder_max_radius, blank_holder_die_gap, part_rotation):
@@ -331,12 +403,56 @@ def punch_ref_point():
     p.ReferencePoint(point=v1[0])
 
 
-def create_punch_surface():
+def create_punch_surface(all_part_rotation):
 
     p = mdb.models['Model-1'].parts["punch"]
     s = p.faces
-    side2Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
-    p.Surface(side2Faces=side2Faces, name="punch_surface")
+    side1Faces = s.getSequenceFromMask(mask=('[#7 ]', ), )
+
+    if all_part_rotation == 360:
+        p.Surface(side1Faces=side1Faces, name="punch_surface")
+    else:
+        p.Surface(side2Faces=side1Faces, name="punch_surface")
+
+def create_stopper(all_part_rotation, max_blank_holder_radius, blank_thickness):
+
+    stopper_size = 4
+
+    s1 = mdb.models['Model-1'].ConstrainedSketch(name='__profile__', 
+        sheetSize=200.0)
+    g, v, d, c = s1.geometry, s1.vertices, s1.dimensions, s1.constraints
+    s1.setPrimaryObject(option=STANDALONE)
+    s1.ConstructionLine(point1=(0.0, -100.0), point2=(0.0, 100.0))
+    s1.FixedConstraint(entity=g[2])
+    s1.rectangle(point1=(max_blank_holder_radius - stopper_size, blank_thickness * 0.5), point2=(max_blank_holder_radius, 0.0))
+    p = mdb.models['Model-1'].Part(name='stopper', dimensionality=THREE_D, 
+        type=DEFORMABLE_BODY)
+    p = mdb.models['Model-1'].parts['stopper']
+    p.BaseSolidRevolve(sketch=s1, angle=all_part_rotation, flipRevolveDirection=OFF)
+    s1.unsetPrimaryObject()
+    p = mdb.models['Model-1'].parts['stopper']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    del mdb.models['Model-1'].sketches['__profile__']
+
+    # # ref point
+    # a = mdb.models['Model-1'].rootAssembly
+    # e11 = a.instances['stopper-1'].edges
+    # a.ReferencePoint(point=a.instances['stopper-1'].InterestingPoint(edge=e11[1], 
+    #     rule=MIDDLE))
+
+
+def create_stopper_surface():
+
+    p = mdb.models['Model-1'].parts['stopper']
+    s = p.faces
+    side1Faces = s.getSequenceFromMask(mask=('[#8 ]', ), )
+    p.Surface(side1Faces=side1Faces, name='stopper_top_surf')
+
+
+    p = mdb.models['Model-1'].parts['stopper']
+    s = p.faces
+    side1Faces = s.getSequenceFromMask(mask=('[#2 ]', ), )
+    p.Surface(side1Faces=side1Faces, name='stopper_bottom_surf')
 
 
 def create_part_assembly():
@@ -350,6 +466,8 @@ def create_part_assembly():
     a1.Instance(name=f'{"die"}-1', part=p, dependent=ON)
     p = mdb.models['Model-1'].parts["punch"]
     a1.Instance(name=f'{"punch"}-1', part=p, dependent=ON)
+    p = mdb.models['Model-1'].parts["stopper"]
+    a1.Instance(name=f'{"stopper"}-1', part=p, dependent=ON)
 
 
 def create_blank_material(blank_material_name, density, youngs_modulus, posissons_ratio, plastic_material_data):
@@ -361,6 +479,12 @@ def create_blank_material(blank_material_name, density, youngs_modulus, posisson
         posissons_ratio), ))
     mdb.models['Model-1'].materials[blank_material_name].Plastic(scaleStress=None, 
         table=plastic_material_data)
+    
+    # stopper material
+    mdb.models['Model-1'].Material(name='stopper_material', 
+        objectToCopy=mdb.models['Model-1'].materials[blank_material_name])
+    mdb.models['Model-1'].materials['stopper_material'].elastic.setValues(table=((
+        youngs_modulus * 10, posissons_ratio), ))
 
 
 def create_surface_interactions(solver_type: SolverType, friction_coefficient):
@@ -371,19 +495,21 @@ def create_surface_interactions(solver_type: SolverType, friction_coefficient):
     mdb.models['Model-1'].ContactProperty('die_blank')
     mdb.models['Model-1'].ContactProperty('punch_blank')
     mdb.models['Model-1'].ContactProperty('blank_holder_blank')
+    mdb.models['Model-1'].ContactProperty('die_blank_holder_stopper')
 
-    mdb.models['Model-1'].interactionProperties['blank_holder_blank'].TangentialBehavior(
-        formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
-        pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
-        table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
-        fraction=0.005, elasticSlipStiffness=None)
-    
     mdb.models['Model-1'].interactionProperties['die_blank'].TangentialBehavior(
         formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
         pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
         table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
         fraction=0.005, elasticSlipStiffness=None)
+    
     mdb.models['Model-1'].interactionProperties['punch_blank'].TangentialBehavior(
+        formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
+        pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
+        table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
+        fraction=0.005, elasticSlipStiffness=None)
+
+    mdb.models['Model-1'].interactionProperties['blank_holder_blank'].TangentialBehavior(
         formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, 
         pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, 
         table=((friction_coefficient, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, 
@@ -440,8 +566,82 @@ def create_surface_interactions(solver_type: SolverType, friction_coefficient):
                 createStepName='Initial', main = region1, secondary = region2, sliding=FINITE, 
                 interactionProperty='blank_holder_blank', initialClearance=OMIT, 
                 datumAxis=None, clearanceRegion=None)
+
+
+    # blank_die interaction
+    a = mdb.models['Model-1'].rootAssembly
+    region1=a.instances['die-1'].surfaces['die_surface']
+    a = mdb.models['Model-1'].rootAssembly
+    region2=a.instances['blank-1'].surfaces['blank_bottom_surface']
+    if solver_type == SolverType.EXPLICIT:
+        mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_blank', 
+            createStepName='Initial', main = region1, secondary = region2, 
+            mechanicalConstraint=PENALTY, sliding=FINITE, 
+            interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
+    elif solver_type == SolverType.STANDARD:
+        mdb.models['Model-1'].SurfaceToSurfaceContactStd(name ='die_blank', 
+            createStepName='Initial', main = region1, secondary = region2, sliding=FINITE, 
+            interactionProperty='die_blank', initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
         
-def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scaling, trim_buffer):
+    # # blank_holder_die contact
+    # a = mdb.models['Model-1'].rootAssembly
+    # region1=a.instances['blank_holder-1'].surfaces['blank_holder_surface']
+    # a = mdb.models['Model-1'].rootAssembly
+    # region2=a.instances['die-1'].surfaces['die_surface']
+    # if solver_type == SolverType.STANDARD:
+    #     mdb.models['Model-1'].SurfaceToSurfaceContactStd(name='blank_holder_die', 
+    #         createStepName='Initial', main=region1, secondary=region2, 
+    #         sliding=FINITE, thickness=ON, interactionProperty='blank_holder_die', 
+    #         adjustMethod=NONE, initialClearance=OMIT, datumAxis=None, 
+    #         clearanceRegion=None)
+    # elif solver_type == SolverType.EXPLICIT:   
+    #     mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='blank_holder_die', 
+    #         createStepName='Initial', main = region2, secondary = region1, 
+    #         mechanicalConstraint=PENALTY, sliding=FINITE, 
+    #         interactionProperty='blank_holder_die', initialClearance=OMIT, datumAxis=None, 
+    #         clearanceRegion=None)
+
+
+    # blank_holder_stopper contact
+    a = mdb.models['Model-1'].rootAssembly
+    region1=a.instances['blank_holder-1'].surfaces['blank_holder_surface']
+    a = mdb.models['Model-1'].rootAssembly
+    region2=a.instances['stopper-1'].surfaces['stopper_top_surf']
+    if solver_type == SolverType.STANDARD:
+        mdb.models['Model-1'].SurfaceToSurfaceContactStd(name='blank_holder_stopper', 
+            createStepName='Initial', main=region1, secondary=region2, 
+            sliding=FINITE, thickness=ON, interactionProperty='die_blank_holder_stopper', 
+            adjustMethod=NONE, initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
+    elif solver_type == SolverType.EXPLICIT:   
+        mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='blank_holder_stopper', 
+            createStepName='Initial', main = region2, secondary = region1, 
+            mechanicalConstraint=PENALTY, sliding=FINITE, 
+            interactionProperty='die_blank_holder_stopper', initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
+
+    # die_stopper contact
+    a = mdb.models['Model-1'].rootAssembly
+    region1=a.instances['stopper-1'].surfaces['stopper_bottom_surf']
+    a = mdb.models['Model-1'].rootAssembly
+    region2=a.instances['die-1'].surfaces['die_surface']
+    if solver_type == SolverType.STANDARD:
+        mdb.models['Model-1'].SurfaceToSurfaceContactStd(name='die_stopper', 
+            createStepName='Initial', main=region2, secondary=region1, 
+            sliding=FINITE, thickness=ON, interactionProperty='die_blank_holder_stopper', 
+            adjustMethod=NONE, initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
+    elif solver_type == SolverType.EXPLICIT:   
+        mdb.models['Model-1'].SurfaceToSurfaceContactExp(name ='die_stopper', 
+            createStepName='Initial', main = region2, secondary = region1, 
+            mechanicalConstraint=PENALTY, sliding=FINITE, 
+            interactionProperty='die_blank_holder_stopper', initialClearance=OMIT, datumAxis=None, 
+            clearanceRegion=None)
+
+        
+def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scaling, trim_buffer, all_parts_rotation, BHF):
 
     load_time = (punch_depth + trim_buffer) / punch_speed
 
@@ -464,7 +664,7 @@ def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scali
             name='load', 
             previous='Initial',
             timePeriod=load_time,
-            maxNumInc=1000,
+            maxNumInc=1, # 1000
             initialInc=0.1, 
             maxInc=1.0, 
             nlgeom=ON
@@ -475,23 +675,58 @@ def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scali
             overlay=OFF
         )
 
+    if all_parts_rotation == 90:
 
-    # session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='load')
-    # session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=ON, bcs=ON, 
-        # predefinedFields=ON, connectors=ON, adaptiveMeshConstraints=OFF)
-    a = mdb.models['Model-1'].rootAssembly
-    e1 = a.instances['blank-1'].edges
-    edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
-    region = a.Set(edges=edges1, name='Set-1')
-    mdb.models['Model-1'].XsymmBC(name='BC-1', createStepName='load', 
-        region=region, localCsys=None)
-    a = mdb.models['Model-1'].rootAssembly
-    e1 = a.instances['blank-1'].edges
+        a = mdb.models['Model-1'].rootAssembly
+        e1 = a.instances['blank-1'].edges
+        edges1 = e1.getSequenceFromMask(mask=('[#18 ]', ), )
+        region = a.Set(edges=edges1, name='Set-1')
+        mdb.models['Model-1'].XsymmBC(name='BC-1', createStepName='load', 
+            region=region, localCsys=None)
+        a = mdb.models['Model-1'].rootAssembly
+        e1 = a.instances['blank-1'].edges
 
-    edges1 = e1.getSequenceFromMask(mask=('[#44 ]', ), )
-    region = a.Set(edges=edges1, name='Set-2')
-    mdb.models['Model-1'].ZsymmBC(name='BC-2', createStepName='load', 
-        region=region, localCsys=None)
+        edges1 = e1.getSequenceFromMask(mask=('[#22 ]', ), )
+        region = a.Set(edges=edges1, name='Set-2')
+        mdb.models['Model-1'].ZsymmBC(name='BC-2', createStepName='load', 
+            region=region, localCsys=None)
+        a = mdb.models['Model-1'].rootAssembly
+        r1 = a.instances['die-1'].referencePoints
+        refPoints1=(r1[3], )
+    
+    elif all_parts_rotation == 180:
+        
+        a = mdb.models['Model-1'].rootAssembly
+        e1 = a.instances['blank-1'].edges
+        edges1 = e1.getSequenceFromMask(mask=('[#4c8 ]', ), )
+        region = a.Set(edges=edges1, name='Set-1')
+        mdb.models['Model-1'].ZsymmBC(name='BC-1', createStepName='load', 
+            region=region, localCsys=None)
+        a = mdb.models['Model-1'].rootAssembly
+        e1 = a.instances['blank-1'].edges
+
+        edges1 = e1.getSequenceFromMask(mask=('[#a22 ]', ), )
+        region = a.Set(edges=edges1, name='Set-2')
+        mdb.models['Model-1'].ZsymmBC(name='BC-2', createStepName='load', 
+            region=region, localCsys=None)
+        a = mdb.models['Model-1'].rootAssembly
+        r1 = a.instances['die-1'].referencePoints
+        refPoints1=(r1[3], )
+
+    elif all_parts_rotation == 360:
+
+        pass
+
+        # a = mdb.models['Model-1'].rootAssembly
+        # v1 = a.instances['blank-1'].vertices
+        # verts1 = v1.getSequenceFromMask(mask=('[#40 ]', ), )
+        # region = a.Set(vertices=verts1, name='Set-1')
+        # mdb.models['Model-1'].DisplacementBC(name='BC-1', createStepName='load', 
+        #     region=region, u1=0.0, u2=UNSET, u3=0.0, ur1=UNSET, ur2=UNSET, ur3=UNSET, 
+        #     amplitude=UNSET, fixed=OFF, distributionType=UNIFORM, fieldName='', 
+        #     localCsys=None)
+
+
     a = mdb.models['Model-1'].rootAssembly
     r1 = a.instances['die-1'].referencePoints
     refPoints1=(r1[3], )
@@ -528,6 +763,29 @@ def create_boundary_conditions(solver_type, punch_speed, punch_depth, mass_scali
         region=region, v1=UNSET, v2= -1 * punch_speed, v3=UNSET, vr1=UNSET, vr2=UNSET, 
         vr3=UNSET, amplitude=UNSET, localCsys=None, distributionType=UNIFORM, 
         fieldName='')
+    
+    a = mdb.models['Model-1'].rootAssembly
+    r1 = a.instances['blank_holder-1'].referencePoints
+    refPoints1=(r1[3], )
+    region = regionToolset.Region(referencePoints=refPoints1)
+    mdb.models['Model-1'].ConcentratedForce(name='BHF', createStepName='load', 
+        region=region, cf2=-1 * BHF, distributionType=UNIFORM, field='', 
+        localCsys=None)
+    mdb.models['Model-1'].boundaryConditions['BC-4'].setValues(u2=UNSET)
+
+    a = mdb.models['Model-1'].rootAssembly
+    f1 = a.instances['stopper-1'].faces
+    faces1 = f1.getSequenceFromMask(mask=('[#10 ]', ), )
+    region = regionToolset.Region(faces=faces1)
+    mdb.models['Model-1'].XsymmBC(name='BC-77', createStepName='Initial', 
+        region=region, localCsys=None)
+
+    a = mdb.models['Model-1'].rootAssembly
+    f1 = a.instances['stopper-1'].faces
+    faces1 = f1.getSequenceFromMask(mask=('[#20 ]', ), )
+    region = regionToolset.Region(faces=faces1)
+    mdb.models['Model-1'].ZsymmBC(name='BC-88', createStepName='Initial', 
+        region=region, localCsys=None)
 
 def create_mesh(solver_type: SolverType, mesh_size, local_seeding_size):
 
@@ -585,9 +843,9 @@ def create_mesh(solver_type: SolverType, mesh_size, local_seeding_size):
     p = mdb.models['Model-1'].parts['blank']
     session.viewports['Viewport: 1'].setValues(displayedObject=p)
     p = mdb.models['Model-1'].parts['blank']
-    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
+    p.seedPart(size=local_seeding_size, deviationFactor=0.1, minSizeFactor=0.1)
     edges = p.edges.getByBoundingBox(-5, -5, -10, 5, 5, 10) 
-    p.seedEdgeBySize(edges=edges, size=mesh_size / 3, constraint=FIXED)
+    p.seedEdgeBySize(edges=edges, size=local_seeding_size, constraint=FIXED) # removed the / 3 for mesh size
 
 
 
@@ -603,18 +861,19 @@ def create_mesh(solver_type: SolverType, mesh_size, local_seeding_size):
     p = mdb.models['Model-1'].parts['blank']
     p.generateMesh()
 
-    p = mdb.models['Model-1'].parts['blank']
-    f = p.faces
-    faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
-    pickedRegions =(faces, )
-    p.setElementType(regions=pickedRegions, elemTypes=(elemType1_shell, elemType2_shell))
-    p = mdb.models['Model-1'].parts['blank']
-    f = p.faces
-    pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
-    p.setMeshControls(regions=pickedRegions, technique=SWEEP)
-    p = mdb.models['Model-1'].parts['blank']
-    p.seedPart(size=local_seeding_size, deviationFactor=0.1, minSizeFactor=0.1)
-    p.generateMesh()
+    # # local seeding blank
+    # p = mdb.models['Model-1'].parts['blank']
+    # f = p.faces
+    # faces = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    # pickedRegions =(faces, )
+    # p.setElementType(regions=pickedRegions, elemTypes=(elemType1_shell, elemType2_shell))
+    # p = mdb.models['Model-1'].parts['blank']
+    # f = p.faces
+    # pickedRegions = f.getSequenceFromMask(mask=('[#1 ]', ), )
+    # p.setMeshControls(regions=pickedRegions, technique=SWEEP)
+    # p = mdb.models['Model-1'].parts['blank']
+    # p.seedPart(size=local_seeding_size, deviationFactor=0.1, minSizeFactor=0.1)
+    # p.generateMesh()
 
     p1 = mdb.models['Model-1'].parts['punch']
     session.viewports['Viewport: 1'].setValues(displayedObject=p1)
@@ -635,6 +894,28 @@ def create_mesh(solver_type: SolverType, mesh_size, local_seeding_size):
         engineeringFeatures=OFF, mesh=ON)
     session.viewports['Viewport: 1'].partDisplay.meshOptions.setValues(
         meshTechnique=ON)
+
+    # stopper
+    p = mdb.models['Model-1'].parts['stopper']
+    p.seedPart(size=mesh_size, deviationFactor=0.1, minSizeFactor=0.1)
+    elemType1 = mesh.ElemType(elemCode=C3D8R, elemLibrary=STANDARD, 
+        kinematicSplit=AVERAGE_STRAIN, secondOrderAccuracy=OFF, 
+        hourglassControl=DEFAULT, distortionControl=DEFAULT)
+    elemType2 = mesh.ElemType(elemCode=C3D6, elemLibrary=STANDARD) # only standard available for stopper
+    elemType3 = mesh.ElemType(elemCode=C3D4, elemLibrary=STANDARD)
+    p = mdb.models['Model-1'].parts['stopper']
+    c = p.cells
+    cells = c.getSequenceFromMask(mask=('[#1 ]', ), )
+    pickedRegions =(cells, )
+    p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2, 
+        elemType3))
+    p = mdb.models['Model-1'].parts['stopper']
+    c = p.cells
+    pickedRegions = c.getSequenceFromMask(mask=('[#1 ]', ), )
+    p.setMeshControls(regions=pickedRegions, technique=SWEEP, 
+        algorithm=ADVANCING_FRONT)
+    p = mdb.models['Model-1'].parts['stopper']
+    p.generateMesh()
 
     ## local seeding
     p = mdb.models['Model-1'].parts['punch']
@@ -676,7 +957,7 @@ def create_mesh(solver_type: SolverType, mesh_size, local_seeding_size):
     p.generateMesh()
 
     
-def apply_material_properties(material_name, integration_points, blank_thickness):
+def apply_material_properties(material_name, integration_points, blank_thickness, part_rotation):
 
     p = mdb.models['Model-1'].parts['blank']
     mdb.models['Model-1'].HomogeneousShellSection(name='blank_section', 
@@ -687,7 +968,31 @@ def apply_material_properties(material_name, integration_points, blank_thickness
         integrationRule=SIMPSON, numIntPts=integration_points)
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
-    faces = f.getSequenceFromMask(mask=('[#3 ]', ), )
+
+    # set stopper section
+    p = mdb.models['Model-1'].parts['stopper']
+    c = p.cells
+    cells = c.getSequenceFromMask(mask=('[#1 ]', ), )
+    p.Set(cells=cells, name='stopper_set')
+    mdb.models['Model-1'].HomogeneousSolidSection(name='stopper_section', 
+        material='stopper_material', thickness=None)
+
+    # set stopper material
+    p = mdb.models['Model-1'].parts['stopper']
+    c = p.cells
+    cells = c.getSequenceFromMask(mask=('[#1 ]', ), )
+    region = regionToolset.Region(cells=cells)
+    p = mdb.models['Model-1'].parts['stopper']
+    p.SectionAssignment(region=region, sectionName='stopper_section', offset=0.0, 
+        offsetType=MIDDLE_SURFACE, offsetField='', 
+        thicknessAssignment=FROM_SECTION)
+    a = mdb.models['Model-1'].rootAssembly
+
+    if part_rotation == 360:
+        faces = f.getSequenceFromMask(mask=('[#ff ]', ), )
+    else:
+        faces = f.getSequenceFromMask(mask=('[#f ]', ), )
+
     region = regionToolset.Region(faces=faces)
     p = mdb.models['Model-1'].parts['blank']
     p.SectionAssignment(region=region, sectionName='blank_section', offset=0.0, 
@@ -698,10 +1003,10 @@ def apply_material_properties(material_name, integration_points, blank_thickness
     mdb.models['Model-1'].HistoryOutputRequest(name='H-Output-2', 
         createStepName='load', variables=('U1', 'U2', 'U3', 'UR1', 'UR2', 'UR3','RF1', 'RF2', 'RF3', 'RM1', 'RM2', 
         'RM3'), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
-
+    
     p = mdb.models['Model-1'].parts['blank']
     f = p.faces
-    faces = f.getSequenceFromMask(mask=('[#3 ]', ), )
+    faces = f.getSequenceFromMask(mask=('[#f ]', ), )
     p.Set(faces=faces, name='blank_set')
     a = mdb.models['Model-1'].rootAssembly
     a.regenerate()
@@ -746,6 +1051,20 @@ def run_sim_job(solver_type: SolverType, sim_out_path, nCPU):
     # Wait for the Abaqus job to complete before proceeding
     mdb.jobs[job_name].waitForCompletion()
 
+    with open("stamping_sim.sta", "r") as f:
+        lines = f.readlines()
+
+    last_line = lines[-1]
+
+    if "SUCCESSFULLY" in last_line:
+        output = 1
+    else:
+        output = 0
+    
+    with open("sim_status.txt", "w") as f:
+        f.write(str(output))
+
+
 def spring_back_analysis(sim_out_path, nCPU):
 
     mdb.Model(name='Model-1-spring_back', objectToCopy=mdb.models['Model-1'])
@@ -754,6 +1073,7 @@ def spring_back_analysis(sim_out_path, nCPU):
     del mdb.models['Model-1-spring_back'].parts['blank_holder']
     del mdb.models['Model-1-spring_back'].parts['die']
     del mdb.models['Model-1-spring_back'].parts['punch']
+    del mdb.models['Model-1-spring_back'].parts['stopper']
     a = mdb.models['Model-1-spring_back'].rootAssembly
     session.viewports['Viewport: 1'].setValues(displayedObject=a)
     a = mdb.models['Model-1-spring_back'].rootAssembly
@@ -764,10 +1084,16 @@ def spring_back_analysis(sim_out_path, nCPU):
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(interactions=ON, 
         constraints=ON, connectors=ON, engineeringFeatures=ON)
     a = mdb.models['Model-1-spring_back'].rootAssembly
-    a.deleteFeatures(('blank_holder-1', 'die-1', 'punch-1', ))
+    a.deleteFeatures(('blank_holder-1', 'die-1', 'punch-1', "stopper-1"))
     del mdb.models['Model-1-spring_back'].interactions['blank_holder_blank']
     del mdb.models['Model-1-spring_back'].interactions['die_blank']
     del mdb.models['Model-1-spring_back'].interactions['punch_blank']
+    del mdb.models['Model-1-spring_back'].interactions['die_stopper']
+    del mdb.models['Model-1-spring_back'].interactions['blank_holder_stopper']
+
+    del mdb.models['Model-1-spring_back'].boundaryConditions['BC-77']
+    del mdb.models['Model-1-spring_back'].boundaryConditions['BC-88']
+
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(interactions=OFF, 
         constraints=OFF, connectors=OFF, engineeringFeatures=OFF, 
         adaptiveMeshConstraints=ON)
@@ -775,26 +1101,23 @@ def spring_back_analysis(sim_out_path, nCPU):
     session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='Initial')
     mdb.models['Model-1-spring_back'].StaticStep(name='Step-1', previous='Initial', 
         maxNumInc=10000, initialInc=0.001, maxInc=0.1, nlgeom=ON)
+    
     a = mdb.models['Model-1-spring_back'].rootAssembly
     e1 = a.instances['blank-1'].edges
-    edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
-    region = a.Set(edges=edges1, name='Set-7')
-    a = mdb.models['Model-1-spring_back'].rootAssembly
-    e1 = a.instances['blank-1'].edges
-    edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
+    edges1 = e1.getSequenceFromMask(mask=('[#18 ]', ), )
     region = a.Set(edges=edges1, name='Set-9')
     mdb.models['Model-1-spring_back'].XsymmBC(name='BC-1', createStepName='Step-1', 
         region=region, localCsys=None)
     a = mdb.models['Model-1-spring_back'].rootAssembly
     e1 = a.instances['blank-1'].edges
-    edges1 = e1.getSequenceFromMask(mask=('[#44 ]', ), )
+    edges1 = e1.getSequenceFromMask(mask=('[#22 ]', ), )
     region = a.Set(edges=edges1, name='Set-10')
     mdb.models['Model-1-spring_back'].ZsymmBC(name='BC-2', createStepName='Step-1', 
         region=region, localCsys=None)
 
     a = mdb.models['Model-1-spring_back'].rootAssembly
     v1 = a.instances['blank-1'].vertices
-    verts1 = v1.getSequenceFromMask(mask=('[#20 ]', ), )
+    verts1 = v1.getSequenceFromMask(mask=('[#10 ]', ), )
     region = a.Set(vertices=verts1, name='Set-11')
     mdb.models['Model-1-spring_back'].DisplacementBC(name='BC-3', 
         createStepName='Step-1', region=region, u1=0.0, u2=0.0, u3=0.0, 
@@ -827,6 +1150,74 @@ def spring_back_analysis(sim_out_path, nCPU):
     mdb.jobs['spring_back'].waitForCompletion()
 
 
+def demeri_test(sim_out_path, nCPU):
+
+    mdb.Model(name='Model-demeri', objectToCopy=mdb.models['Model-1'])
+    p = mdb.models['Model-demeri'].parts['blank']
+    session.viewports['Viewport: 1'].setValues(displayedObject=p)
+    del mdb.models['Model-demeri'].parts['blank_holder']
+    del mdb.models['Model-demeri'].parts['die']
+    del mdb.models['Model-demeri'].parts['punch']
+    a = mdb.models['Model-demeri'].rootAssembly
+    session.viewports['Viewport: 1'].setValues(displayedObject=a)
+    a = mdb.models['Model-demeri'].rootAssembly
+    session.viewports['Viewport: 1'].setValues(displayedObject=a)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
+        predefinedFields=OFF, connectors=OFF, optimizationTasks=OFF, 
+        geometricRestrictions=OFF, stopConditions=OFF)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(interactions=ON, 
+        constraints=ON, connectors=ON, engineeringFeatures=ON)
+    a = mdb.models['Model-demeri'].rootAssembly
+    a.deleteFeatures(('blank_holder-1', 'die-1', 'punch-1', ))
+    del mdb.models['Model-demeri'].interactions['blank_holder_blank']
+    del mdb.models['Model-demeri'].interactions['die_blank']
+    del mdb.models['Model-demeri'].interactions['punch_blank']
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(interactions=OFF, 
+        constraints=OFF, connectors=OFF, engineeringFeatures=OFF, 
+        adaptiveMeshConstraints=ON)
+    del mdb.models['Model-demeri'].steps['load']
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(step='Initial')
+    mdb.models['Model-demeri'].StaticStep(name='Step-1', previous='Initial', 
+        maxNumInc=10000, initialInc=0.001, maxInc=0.1, nlgeom=ON)
+
+
+    # a = mdb.models['Model-1-spring_back'].rootAssembly
+    # e1 = a.instances['blank-1'].edges
+    # edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
+    # region = a.Set(edges=edges1, name='Set-7')
+    # a = mdb.models['Model-1-spring_back'].rootAssembly
+    # e1 = a.instances['blank-1'].edges
+    # edges1 = e1.getSequenceFromMask(mask=('[#30 ]', ), )
+    # region = a.Set(edges=edges1, name='Set-9')
+    # mdb.models['Model-1-spring_back'].XsymmBC(name='BC-1', createStepName='Step-1', 
+    #     region=region, localCsys=None)
+    # a = mdb.models['Model-1-spring_back'].rootAssembly
+    # e1 = a.instances['blank-1'].edges
+    # edges1 = e1.getSequenceFromMask(mask=('[#44 ]', ), )
+    # region = a.Set(edges=edges1, name='Set-10')
+    # mdb.models['Model-1-spring_back'].ZsymmBC(name='BC-2', createStepName='Step-1', 
+    #     region=region, localCsys=None)
+
+    # a = mdb.models['Model-1-spring_back'].rootAssembly
+    # v1 = a.instances['blank-1'].vertices
+    # verts1 = v1.getSequenceFromMask(mask=('[#20 ]', ), )
+    # region = a.Set(vertices=verts1, name='Set-11')
+    # mdb.models['Model-1-spring_back'].DisplacementBC(name='BC-3', 
+    #     createStepName='Step-1', region=region, u1=0.0, u2=0.0, u3=0.0, 
+    #     ur1=0.0, ur2=0.0, ur3=0.0, amplitude=UNSET, fixed=OFF, 
+    #     distributionType=UNIFORM, fieldName='', localCsys=None)
+
+    instances=(mdb.models['Model-demeri'].rootAssembly.instances['blank-1'], 
+        )
+
+
+    mdb.models['Model-demeri'].InitialState(
+        updateReferenceConfiguration=ON, fileName='stamping_sim', 
+        endStep=LAST_STEP, endIncrement=STEP_END, name='Predefined Field-1', 
+        createStepName='Initial', instances=instances)
+    session.viewports['Viewport: 1'].assemblyDisplay.setValues(loads=OFF, bcs=OFF, 
+        predefinedFields=OFF, connectors=OFF)
+
 
 def run_sim(input_dex: InputeDex):
     
@@ -855,12 +1246,12 @@ def run_sim(input_dex: InputeDex):
 
     # create blank
     create_blank_part(input_dex.blank_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
-    create_blank_surfaces()
+    create_blank_surfaces(input_dex.all_part_rotation)
 
     # create die
     create_die_part(input_dex.die_height, input_dex.die_profile_radius, input_dex.die_min_radius, input_dex.die_max_radius, input_dex.all_part_rotation)
-    create_die_surface()
-    die_ref_point()  
+    create_die_surface(input_dex.all_part_rotation)
+    die_ref_point(input_dex.all_part_rotation)  
 
     # create bkank holder
     create_blank_holder(input_dex.blank_holder_height, input_dex.blank_holder_profile_radius, input_dex.blank_holder_min_radius, input_dex.blank_holder_max_radius, input_dex.blank_holder_die_gap, input_dex.all_part_rotation)
@@ -870,7 +1261,11 @@ def run_sim(input_dex: InputeDex):
     # create punch
     create_punch(input_dex.punch_depth, input_dex.punch_profile_radius, input_dex.punch_min_radius, input_dex.blank_thickness, input_dex.all_part_rotation)
     punch_ref_point()
-    create_punch_surface()
+    create_punch_surface(input_dex.all_part_rotation)
+
+    create_stopper(input_dex.all_part_rotation, input_dex.blank_holder_max_radius, input_dex.blank_thickness)
+    create_stopper_surface()
+
 
     # create ideal part
     create_ideal_part(input_dex.ideal_cup_height, input_dex.ideal_cup_profile_radius, input_dex.ideal_cup_radius, input_dex.all_part_rotation)
@@ -881,19 +1276,41 @@ def run_sim(input_dex: InputeDex):
     # define material
     create_blank_material(input_dex.blank_material_name, input_dex.density, input_dex.youngs_modulus, input_dex.posissons_ratio, input_dex.plastic_material_data)
 
+    # die_ref_point(input_dex.all_part_rotation)
+    # blank_holder_ref_point()
+    # punch_ref_point()
+
+    # # meshing
+    # create_mesh(input_dex.solver_type, input_dex.mesh_size, input_dex.local_mesh_size)
+
+    # create_blank_surfaces(input_dex.all_part_rotation)
+    # create_die_surface(input_dex.all_part_rotation)
+    # die_ref_point(input_dex.all_part_rotation)
+    # create_blank_holder_surface()
+    # blank_holder_ref_point()
+    # punch_ref_point()
+    # create_punch_surface(input_dex.all_part_rotation)
+    # create_stopper_surface()
+
+
     # define surface interactions
     create_surface_interactions(input_dex.solver_type, input_dex.friction_coefficient)
 
     # loading and unloading phases
-    create_boundary_conditions(input_dex.solver_type, input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling, input_dex.trim_depth)
+    create_boundary_conditions(input_dex.solver_type, input_dex.punch_velocity, input_dex.punch_depth, input_dex.mass_scalling, input_dex.trim_depth, input_dex.all_part_rotation, input_dex.BHF)
 
     # meshing
     create_mesh(input_dex.solver_type, input_dex.mesh_size, input_dex.local_mesh_size)
 
-    apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness)
+    apply_material_properties(input_dex.blank_material_name, input_dex.integration_points, input_dex.blank_thickness, input_dex.all_part_rotation)
 
     nCPU = 14 # vis suite
+
+    # # remote desktop
     # nCPU = 4
+
+    # # mech labs
+    # nCPU = 8
 
     cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
     mdb.saveAs(pathName=cae_path)
@@ -908,10 +1325,17 @@ def run_sim(input_dex: InputeDex):
     cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
     mdb.saveAs(pathName=cae_path)
 
+    # # demeri_test(input_dex.simulation_output_path, nCPU)
+
+    # # cae_path = f"{input_dex.simulation_output_path}/stamping_sim.cae"
+    # # mdb.saveAs(pathName=cae_path)
+
 
 def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
 
     os.makedirs(main_sim_path, exist_ok=False) 
+
+    results = []
 
     for i, sim in enumerate(batch, start=1):
         sim.simulation_output_path = os.path.join(main_sim_path, f"sim_{i}")
@@ -935,9 +1359,11 @@ def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
 
         # compare final stamped shape 
         export_final_node_positions(sim.punch_depth, sim.trim_depth, sim.die_profile_radius)
-        rmse, max_deviation = compare_meshes()
+        height_diplacement = get_stamped_cup_height(sim.ideal_cup_height)
+        rmse = compare_meshes()
 
-        return min_thickness, rmse, max_deviation
+        # ADD BACK FOR THE BO
+        return min_thickness, rmse, height_diplacement
 
 def compare_meshes():
 
@@ -955,22 +1381,20 @@ def compare_meshes():
 
     # stamped_mesh_aligned = stamped_mesh.align(ideal_mesh)
 
-    _, closest_points = ideal_mesh.find_closest_cell(stamped_mesh_aligned.points, return_closest_point=True)
+    _, closest_points_to_ideal = ideal_mesh.find_closest_cell(stamped_mesh_aligned.points, return_closest_point=True)
 
-    distances = np.linalg.norm(stamped_mesh_aligned.points - closest_points, axis=1)
+    distances_to_ideal = np.linalg.norm(stamped_mesh_aligned.points - closest_points_to_ideal, axis=1)
 
-    rmse = np.sqrt(np.mean(distances**2))
-    max_deviation = np.max(distances)
+    rmse = np.sqrt(np.mean(distances_to_ideal**2))
 
     print(f"RMSE: {rmse:.2f} mm")
-    print(f"Max Deviation: {max_deviation:.2f} mm")
 
     with open("compare_stamped_shape.txt", "w") as f:
 
-        f.write("RMSE,max deviation\n")
-        f.write(f"{rmse},{max_deviation}")
+        f.write("RMSE\n")
+        f.write(f"{rmse}")
 
-    # # Plot the aligned meshes
+    # Plot the aligned meshes
     # plotter = pv.Plotter()
     # plotter.add_mesh(ideal_mesh, color="blue", opacity=0.5, label="Ideal Mesh")
     # plotter.add_mesh(stamped_mesh_aligned, color="red", opacity=0.5, label="Stamped Mesh (Aligned)")
@@ -1000,7 +1424,7 @@ def compare_meshes():
     # plotter.add_scalar_bar(title="Deviation Distance (mm)")
     # plotter.show()
 
-    return rmse, max_deviation
+    return rmse
 
 def post_pro_thickness():
 
@@ -1129,7 +1553,7 @@ def plot_rf_data():
 
     plt.figure()
 
-    plt.plot(rf_df["displacement"], rf_df["rf"])
+    plt.plot(rf_df["displacement"], rf_df["rf"] * 4) # for quarter model
     plt.xlabel("Displacement (mm)")
     plt.ylabel("Reaction Force (KN)")
     plt.grid(True)
@@ -1358,13 +1782,127 @@ def export_final_node_positions(punch_depth, trim_depth, die_profile_radius):
 
     filtered_nodes = nodes[nodes['Y'] <=  max_height - trim_length]
 
-    filtered_nodes.to_csv("trim_results.csv", index=False)
+    nodes.to_csv("trim_results.csv", index=False) # change back to filtered / check filtered ???????????????????????
     odb.close()
 
     print("saved trimmed mesh")
 
+def get_stamped_cup_height(ideal_cup_height):
+
+    cwd = os.getcwd()
+
+    nodes = pd.read_csv("trim_results.csv")
+
+    cup_height = nodes["Y"].max() - nodes["Y"].min() 
+
+    stamped_ideal_cup_displacement = cup_height - ideal_cup_height
+
+
+    output_file_path = os.path.join(cwd, "stamped_ideal_cup_displacement.txt")
+
+    with open(output_file_path, "w") as f:
+
+        f.write(str(stamped_ideal_cup_displacement))
+
+    return stamped_ideal_cup_displacement
+
+
+
+def mesh_conv_final_max():
+
+    import pandas as pd
+
+    sim_numbers = [1, 2, 3, 4, 5, 6, 7, 8]
+    data_list = ["thickness_results.csv","strain_eq_results.csv", "springback_displacement_results.csv"]
+    var_list = ["SectionThickness","PEEQ", "U_mag"]
+
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp263"
+
+    for sim in sim_numbers:
+
+        print(sim)
+
+        sim_path = rf"{main_sim_output}\sim_{sim}"
+        # print(sim_path)
+
+        for (data, var) in zip(data_list, var_list):
+
+            data_path = rf"{sim_path}\{data}"
+
+            # print(data_path)
+
+            data_temp = pd.read_csv(data_path)
+
+            max_val = data_temp[var].max()
+
+            print(var, max_val)
+
+def mesh_conv_final_min():
+
+    import pandas as pd
+
+    sim_numbers = [8]
+    data_list = ["thickness_results.csv", "reaction_force_results.csv"]
+    var_list = ["SectionThickness", "rf"]
+
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp263"
+
+    for sim in sim_numbers:
+
+        print(sim)
+
+        sim_path = rf"{main_sim_output}\sim_{sim}"
+        # print(sim_path)
+
+        for (data, var) in zip(data_list, var_list):
+
+            data_path = rf"{sim_path}\{data}"
+
+            # print(data_path)
+
+            data_temp = pd.read_csv(data_path)
+
+            max_val = data_temp[var].min()
+
+            print(var, max_val)
+
+
+def plot_exp():
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    # Load data from file (adjust the filename as needed)
+    data = np.loadtxt('punch_rf_experimental.txt', delimiter=',')
+
+    # Split data into x and y arrays
+    x = data[:, 0]
+    y = data[:, 1]
+
+    # Create the plot
+    plt.plot(x, y, marker='o', linestyle='-', color='b', label='Experimental Data')
+
+
+    cwd = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp263\sim_5"
+
+    rf_file_path = f"{cwd}/reaction_force_results.csv"
+
+    rf_df = pd.read_csv(rf_file_path)
+    
+    rf_df["displacement"] = rf_df["displacement"] * -1
+    rf_df["rf"] = rf_df["rf"] * -1e-3
+
+    plt.plot(rf_df["displacement"], rf_df["rf"] * 4, color="r", label="Simulation Data") # for quarter model
+    plt.xlabel("Displacement (mm)")
+    plt.ylabel("Reaction Force (KN)")
+    plt.legend()
+    plt.grid(True)
+
+    plt.savefig("rf_plot_exp_sim.png")
+
 def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profile_radius, punch_depth, punch_profile_radius, punch_min_radius,
-        die_profile_radius, die_punch_gap):
+        die_profile_radius, die_punch_gap, blank_radius):
 
 
     input_dex = InputeDex()
@@ -1372,6 +1910,7 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     input_dex.solver_type = SolverType.STANDARD
     
     input_dex.all_part_rotation = 90
+    input_dex.integration_points = 5
 
     # ideal part dimensions
     input_dex.ideal_cup_radius = ideal_cup_radius
@@ -1379,9 +1918,8 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     input_dex.ideal_cup_profile_radius = ideal_cup_profile_radius
 
     # blank inputs
-    input_dex.blank_radius = 40
-    input_dex.blank_thickness = 1.1
-    input_dex.integration_points = 15
+    input_dex.blank_radius = blank_radius
+    input_dex.blank_thickness = 1
 
     # punch inputs
     input_dex.punch_profile_radius = punch_profile_radius
@@ -1390,137 +1928,79 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     # die inputs
     input_dex.die_profile_radius = die_profile_radius
     input_dex.die_min_radius = punch_min_radius + die_punch_gap
-    input_dex.die_max_radius = input_dex.blank_radius + 5
+    input_dex.die_max_radius = input_dex.blank_radius + 15
 
     # blank holder inputs
     input_dex.blank_holder_height = 10
-    input_dex.blank_holder_profile_radius = 6.5
+    input_dex.blank_holder_profile_radius = 0.1
     input_dex.blank_holder_min_radius = input_dex.die_min_radius
-    input_dex.blank_holder_max_radius = input_dex.blank_radius + 5
-    input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.5
+    input_dex.blank_holder_max_radius = input_dex.blank_radius + 10
+    input_dex.blank_holder_die_gap = input_dex.blank_thickness
 
     # punch
     input_dex.punch_depth = punch_depth
     input_dex.die_height = punch_depth + 5
 
     # material inputs
-    input_dex.blank_material_name = "AA1050"
+    input_dex.blank_material_name = "AA5754-O"
     input_dex.density = 2.7e-06 
-    input_dex.youngs_modulus = 70000.0
+    input_dex.youngs_modulus = 68000.0
     input_dex.posissons_ratio = 0.33
-    input_dex.plastic_material_data = ((35.0, 0.0), (66.56588883, 0.01), (73.19453891, 0.02), (
-        77.6998518, 0.03), (81.21516632, 0.04), (84.1399572, 0.05), (
-        86.66656829, 0.06), (88.90387465, 0.07), (90.92007807, 0.08), (
-        92.76100124, 0.09), (94.45905775, 0.1), (96.03810066, 0.11), (
-        97.51624224, 0.12), (98.90759062, 0.13), (100.2233697, 0.14), (
-        101.4726693, 0.15), (102.6629639, 0.16), (103.8004812, 0.17), (
-        104.8904701, 0.18), (105.9373994, 0.19), (106.9451084, 0.2), (
-        107.9169222, 0.21), (108.855741, 0.22), (109.7641117, 0.23), (
-        110.6442836, 0.24), (111.4982544, 0.25), (112.3278069, 0.26), (
-        113.1345397, 0.27), (113.9198918, 0.28), (114.6851642, 0.29), (
-        115.431537, 0.3), (116.1600841, 0.31), (116.8717864, 0.32), (
-        117.567542, 0.33), (118.2481756, 0.34), (118.9144466, 0.35), (
-        119.5670557, 0.36), (120.2066512, 0.37), (120.833834, 0.38), (
-        121.4491624, 0.39), (122.053156, 0.4), (122.6462992, 0.41), (
-        123.2290448, 0.42), (123.8018162, 0.43), (124.3650101, 0.44), (
-        124.9189991, 0.45), (125.4641332, 0.46), (126.000742, 0.47), (
-        126.529136, 0.48), (127.0496083, 0.49), (127.5624356, 0.5), (128.06788, 
-        0.51), (128.5661893, 0.52), (129.0575987, 0.53), (129.5423312, 0.54), (
-        130.0205987, 0.55), (130.4926026, 0.56), (130.9585348, 0.57), (
-        131.4185777, 0.58), (131.8729055, 0.59), (132.3216843, 0.6), (
-        132.7650726, 0.61), (133.2032221, 0.62), (133.6362775, 0.63), (
-        134.0643776, 0.64), (134.4876553, 0.65), (134.9062378, 0.66), (
-        135.3202471, 0.67), (135.7298005, 0.68), (136.1350102, 0.69), (
-        136.5359844, 0.7), (136.9328269, 0.71), (137.3256375, 0.72), (
-        137.7145125, 0.73), (138.0995443, 0.74), (138.4808221, 0.75), (
-        138.8584318, 0.76), (139.2324563, 0.77), (139.6029755, 0.78), (
-        139.9700666, 0.79), (140.3338041, 0.8), (140.6942601, 0.81), (
-        141.051504, 0.82), (141.4056032, 0.83), (141.7566227, 0.84), (
-        142.1046256, 0.85), (142.4496727, 0.86), (142.7918231, 0.87), (
-        143.131134, 0.88), (143.4676608, 0.89), (143.8014574, 0.9), (
-        144.1325758, 0.91), (144.4610665, 0.92), (144.7869787, 0.93), (
-        145.11036, 0.94), (145.4312566, 0.95), (145.7497136, 0.96), (
-        146.0657745, 0.97), (146.3794819, 0.98), (146.690877, 0.99), (147.0, 
-        1.0), (147.3068899, 1.01), (147.6115847, 1.02), (147.9141214, 1.03), (
-        148.214536, 1.04), (148.5128636, 1.05), (148.8091384, 1.06), (
-        149.1033937, 1.07), (149.3956619, 1.08), (149.6859746, 1.09), (
-        149.9743627, 1.1), (150.2608563, 1.11), (150.5454847, 1.12), (
-        150.8282766, 1.13), (151.1092599, 1.14), (151.3884619, 1.15), (
-        151.6659091, 1.16), (151.9416278, 1.17), (152.2156431, 1.18), (
-        152.48798, 1.19), (152.7586628, 1.2), (153.027715, 1.21), (153.29516, 
-        1.22), (153.5610204, 1.23), (153.8253182, 1.24), (154.0880753, 1.25), (
-        154.3493128, 1.26), (154.6090514, 1.27), (154.8673114, 1.28), (
-        155.1241128, 1.29), (155.3794749, 1.3), (155.6334168, 1.31), (
-        155.8859572, 1.32), (156.1371143, 1.33), (156.3869061, 1.34), (
-        156.63535, 1.35), (156.8824632, 1.36), (157.1282625, 1.37), (
-        157.3727646, 1.38), (157.6159854, 1.39), (157.857941, 1.4), (
-        158.0986467, 1.41), (158.338118, 1.42), (158.5763697, 1.43), (
-        158.8134166, 1.44), (159.049273, 1.45), (159.283953, 1.46), (
-        159.5174705, 1.47), (159.7498392, 1.48), (159.9810723, 1.49), (
-        160.211183, 1.5), (160.4401842, 1.51), (160.6680885, 1.52), (
-        160.8949084, 1.53), (161.120656, 1.54), (161.3453433, 1.55), (
-        161.568982, 1.56), (161.7915839, 1.57), (162.0131601, 1.58), (
-        162.233722, 1.59), (162.4532804, 1.6), (162.6718462, 1.61), (162.88943, 
-        1.62), (163.1060422, 1.63), (163.321693, 1.64), (163.5363926, 1.65), (
-        163.7501509, 1.66), (163.9629777, 1.67), (164.1748825, 1.68), (
-        164.3858748, 1.69), (164.5959639, 1.7), (164.8051589, 1.71), (
-        165.0134688, 1.72), (165.2209025, 1.73), (165.4274688, 1.74), (
-        165.6331761, 1.75), (165.838033, 1.76), (166.0420477, 1.77), (
-        166.2452285, 1.78), (166.4475834, 1.79), (166.6491203, 1.8), (
-        166.8498472, 1.81), (167.0497716, 1.82), (167.2489012, 1.83), (
-        167.4472434, 1.84), (167.6448057, 1.85), (167.8415953, 1.86), (
-        168.0376193, 1.87), (168.2328847, 1.88), (168.4273986, 1.89), (
-        168.6211678, 1.9), (168.814199, 1.91), (169.0064988, 1.92), (
-        169.1980739, 1.93), (169.3889307, 1.94), (169.5790756, 1.95), (
-        169.7685148, 1.96), (169.9572546, 1.97), (170.145301, 1.98), (
-        170.3326602, 1.99), (170.519338, 2.0), (170.7053403, 2.01), (
-        170.8906729, 2.02), (171.0753416, 2.03), (171.2593518, 2.04), (
-        171.4427093, 2.05), (171.6254194, 2.06), (171.8074877, 2.07), (
-        171.9889194, 2.08), (172.1697198, 2.09), (172.349894, 2.1), (
-        172.5294474, 2.11), (172.7083848, 2.12), (172.8867113, 2.13), (
-        173.0644319, 2.14), (173.2415515, 2.15), (173.4180747, 2.16), (
-        173.5940065, 2.17), (173.7693514, 2.18), (173.9441142, 2.19), (
-        174.1182993, 2.2), (174.2919114, 2.21), (174.4649549, 2.22), (
-        174.6374341, 2.23), (174.8093536, 2.24), (174.9807175, 2.25), (
-        175.1515301, 2.26), (175.3217956, 2.27), (175.4915182, 2.28), (
-        175.6607019, 2.29), (175.8293509, 2.3), (175.9974691, 2.31), (
-        176.1650605, 2.32), (176.3321289, 2.33), (176.4986784, 2.34), (
-        176.6647126, 2.35), (176.8302353, 2.36), (176.9952504, 2.37), (
-        177.1597614, 2.38), (177.323772, 2.39), (177.4872859, 2.4), (
-        177.6503066, 2.41), (177.8128376, 2.42), (177.9748824, 2.43), (
-        178.1364444, 2.44), (178.2975271, 2.45), (178.4581339, 2.46), (
-        178.618268, 2.47), (178.7779327, 2.48), (178.9371314, 2.49), (
-        179.0958672, 2.5), (179.2541434, 2.51), (179.411963, 2.52), (
-        179.5693292, 2.53), (179.7262452, 2.54), (179.8827138, 2.55), (
-        180.0387383, 2.56), (180.1943215, 2.57), (180.3494664, 2.58), (
-        180.504176, 2.59), (180.6584531, 2.6), (180.8123006, 2.61), (
-        180.9657213, 2.62), (181.1187181, 2.63), (181.2712937, 2.64), (
-        181.4234509, 2.65), (181.5751923, 2.66), (181.7265208, 2.67), (
-        181.8774389, 2.68), (182.0279492, 2.69), (182.1780545, 2.7), (
-        182.3277572, 2.71), (182.47706, 2.72), (182.6259654, 2.73), (
-        182.7744758, 2.74), (182.9225938, 2.75), (183.0703218, 2.76), (
-        183.2176623, 2.77), (183.3646176, 2.78), (183.5111902, 2.79), (
-        183.6573824, 2.8), (183.8031965, 2.81), (183.948635, 2.82), (
-        184.0936999, 2.83), (184.2383938, 2.84), (184.3827187, 2.85), (
-        184.526677, 2.86), (184.6702707, 2.87), (184.8135022, 2.88), (
-        184.9563736, 2.89), (185.0988871, 2.9), (185.2410446, 2.91), (
-        185.3828485, 2.92), (185.5243007, 2.93), (185.6654033, 2.94), (
-        185.8061584, 2.95), (185.946568, 2.96), (186.0866341, 2.97))
+    input_dex.plastic_material_data = (
+        (91.74, 0.0), (149.8284957, 0.02020202), (184.0636139, 0.04040404), (
+        208.8813246, 0.060606061), (227.7563027, 0.080808081), (242.4816409, 
+        0.101010101), (254.160565, 0.121212121), (263.5336322, 0.141414141), (
+        271.1246064, 0.161616162), (277.3170581, 0.181818182), (282.3989825, 
+        0.202020202), (286.590712, 0.222222222), (290.0633061, 0.242424242), (
+        292.9511489, 0.262626263), (295.3608473, 0.282828283), (297.3776686, 
+        0.303030303), (299.0702914, 0.323232323), (300.4943701, 0.343434343), (
+        301.6952452, 0.363636364), (302.7100293, 0.383838384), (303.5692279, 
+        0.404040404), (304.2980115, 0.424242424), (304.9172192, 0.444444444), (
+        305.4441588, 0.464646465), (305.8932459, 0.484848485), (306.2765196, 
+        0.505050505), (306.604058, 0.525252525), (306.8843178, 0.545454545), (
+        307.1244092, 0.565656566), (307.3303228, 0.585858586), (307.5071151, 
+        0.606060606), (307.6590614, 0.626262626), (307.7897827, 0.646464646), (
+        307.9023503, 0.666666667), (307.9993734, 0.686868687), (308.0830718, 
+        0.707070707), (308.1553359, 0.727272727), (308.2177785, 0.747474747), (
+        308.2717764, 0.767676768), (308.318507, 0.787878788), (308.3589778, 
+        0.808080808), (308.394052, 0.828282828), (308.4244699, 0.848484848), (
+        308.4508671, 0.868686869), (308.4737898, 0.888888889), (308.4937077, 
+        0.909090909), (308.5110251, 0.929292929), (308.5260903, 0.949494949), (
+        308.5392038, 0.96969697), (308.5506247, 0.98989899), (308.560577, 
+        1.01010101), (308.5692539, 1.03030303), (308.5768228, 1.050505051), (
+        308.5834286, 1.070707071), (308.5891965, 1.090909091), (308.5942353, 
+        1.111111111), (308.5986392, 1.131313131), (308.6024899, 1.151515152), (
+        308.6058585, 1.171717172), (308.6088065, 1.191919192), (308.6113876, 
+        1.212121212), (308.6136483, 1.232323232), (308.6156294, 1.252525253), (
+        308.6173659, 1.272727273), (308.6188888, 1.292929293), (308.6202248, 
+        1.313131313), (308.6213974, 1.333333333), (308.6224267, 1.353535354), (
+        308.6233308, 1.373737374), (308.6241251, 1.393939394), (308.6248232, 
+        1.414141414), (308.625437, 1.434343434), (308.6259767, 1.454545455), (
+        308.6264516, 1.474747475), (308.6268695, 1.494949495), (308.6272374, 
+        1.515151515), (308.6275614, 1.535353535), (308.6278468, 1.555555556), (
+        308.6280983, 1.575757576), (308.6283199, 1.595959596), (308.6285154, 
+        1.616161616), (308.6286877, 1.636363636), (308.6288397, 1.656565657), (
+        308.6289739, 1.676767677), (308.6290923, 1.696969697), (308.6291969, 
+        1.717171717), (308.6292892, 1.737373737), (308.6293708, 1.757575758), (
+        308.6294429, 1.777777778), (308.6295066, 1.797979798), (308.6295629, 
+        1.818181818), (308.6296127, 1.838383838), (308.6296568, 1.858585859), (
+        308.6296958, 1.878787879), (308.6297302, 1.898989899), (308.6297608, 
+        1.919191919), (308.6297878, 1.939393939), (308.6298117, 1.95959596), (
+        308.6298329, 1.97979798), (308.6298517, 2.0)
+        )
     
     # BCs
-    input_dex.punch_velocity = 10
-    input_dex.mass_scalling = 5e-6
-
-    input_dex.friction_coefficient = 0.15
+    input_dex.punch_velocity = 1.1
+    input_dex.friction_coefficient = 0.09
+    input_dex.BHF = 6000 / 4
 
     # mesh
-    input_dex.mesh_size = 3
-    input_dex.local_mesh_size = 2
+    input_dex.mesh_size = 5
+    input_dex.local_mesh_size = 5 * 0.75 # CHNAGE BACK PLEASE
 
     input_dex_set = [input_dex]
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\sim_op_2/1"
-    # main_sim_output =  r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92"
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3\sim_runs/1"
 
     def get_sim_out_path(main_sim_output):
         if os.path.isdir(main_sim_output):
@@ -1533,51 +2013,18 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     
     main_sim_output = get_sim_out_path(main_sim_output)
 
-    min_thickness, rmse, max_deviation = run_batch_sim(input_dex_set, main_sim_output)
+    min_thickness, rmse, height_difference = run_batch_sim(input_dex_set, main_sim_output)
 
-    return min_thickness, rmse, max_deviation
+    with open(fr"{main_sim_output}\sim_1\sim_status.txt", "r") as f:
+        sim_status = f.read().strip()
 
+    if sim_status == "0":
+        height_difference = None
 
-def cup_baysien_optimisation():
-
-    ideal_height = 10
-    ideal_radius = 15
-    ideal_profile_radius = 6.5
-
-    def cup_function(punch_depth, punch_profile_radius, punch_min_radius,
-        die_profile_radius, die_punch_gap):
-
-        # use suprocess here to run the sciprt, so no loop
-        _, rmse, _ = cylindrical_cup_function(ideal_height, ideal_radius, ideal_profile_radius, punch_depth, punch_profile_radius, punch_min_radius,
-        die_profile_radius, die_punch_gap)
-        print("sim complete")
-
-        return -rmse
-
-    # Bounded region of parameter space
-    pbounds = {"punch_depth": (15, 25), "punch_profile_radius": (4, 7), "punch_min_radius": (10, 20),
-                "die_profile_radius": (6, 9), "die_punch_gap": (1,5)}
-
-    optimizer = BayesianOptimization(
-        f=cup_function,
-        pbounds=pbounds,
-        random_state=1,
-    )
-
-
-    logger = JSONLogger(path=r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\op_logs.log")
-    optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
-
-    optimizer.maximize(
-    init_points=2,
-    n_iter=3,
-    )
-
-    print(optimizer.max)
+    return min_thickness, rmse, height_difference
 
 
 def run_cup():
-
 
     # Read command-line arguments passed from subprocess
     args = sys.argv[8:]
@@ -1591,192 +2038,22 @@ def run_cup():
     punch_min_radius = float(args[5])
     die_profile_radius = float(args[6])
     die_punch_gap = float(args[7])
+    blank_radius = float(args[8])
 
     # Run simulation
-    _, rmse, _ = cylindrical_cup_function(
+    _, _, height_difference = cylindrical_cup_function(
         ideal_height, ideal_radius, ideal_profile_radius, 
         punch_depth, punch_profile_radius, punch_min_radius,
-        die_profile_radius, die_punch_gap
+        die_profile_radius, die_punch_gap, blank_radius
     )
 
-    data_out = {"rmse": -rmse}
-    with open(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\sim_output.json", "w") as f:
+    if height_difference == None:
+        data_out = {"height difference": None}
+    else:
+        data_out = {"height difference": -abs(height_difference)}
+    
+    with open(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3\sim_output.json", "w") as f:
         json.dump(data_out, f)
-
-# def main():
-
-#     input_dex = InputeDex()
-
-#     input_dex.solver_type = SolverType.STANDARD
-    
-#     input_dex.all_part_rotation = 90
-
-#     # ideal part dimensions
-#     input_dex.ideal_cup_radius = 20
-#     input_dex.ideal_cup_height = 15
-#     input_dex.ideal_cup_profile_radius = 5
-
-#     # blank inputs
-#     input_dex.blank_radius = 40
-#     input_dex.blank_thickness = 1.1
-#     input_dex.integration_points = 15
-
-#     # punch inputs
-#     input_dex.punch_profile_radius = 5 # 5
-#     input_dex.punch_min_radius = 20
-
-#     # die inputs
-#     input_dex.die_profile_radius = 6.5
-#     input_dex.die_min_radius = 22
-#     input_dex.die_max_radius = input_dex.blank_radius + 5
-
-#     # blank holder inputs
-#     input_dex.blank_holder_height = 5
-#     input_dex.blank_holder_profile_radius = 6.5
-#     input_dex.blank_holder_min_radius = 22
-#     input_dex.blank_holder_max_radius = input_dex.blank_radius + 5
-#     input_dex.blank_holder_die_gap = input_dex.blank_thickness + 1
-
-#     # punch
-#     input_dex.cup_design_height = 20
-#     input_dex.punch_depth = input_dex.cup_design_height + input_dex.trim_depth + input_dex.die_profile_radius
-#     input_dex.die_height = input_dex.punch_depth + 10
-
-#     # material inputs
-#     input_dex.blank_material_name = "AA1050"
-#     input_dex.density = 2.7e-06 
-#     input_dex.youngs_modulus = 70000.0
-#     input_dex.posissons_ratio = 0.33
-#     input_dex.plastic_material_data = ((35.0, 0.0), (66.56588883, 0.01), (73.19453891, 0.02), (
-#         77.6998518, 0.03), (81.21516632, 0.04), (84.1399572, 0.05), (
-#         86.66656829, 0.06), (88.90387465, 0.07), (90.92007807, 0.08), (
-#         92.76100124, 0.09), (94.45905775, 0.1), (96.03810066, 0.11), (
-#         97.51624224, 0.12), (98.90759062, 0.13), (100.2233697, 0.14), (
-#         101.4726693, 0.15), (102.6629639, 0.16), (103.8004812, 0.17), (
-#         104.8904701, 0.18), (105.9373994, 0.19), (106.9451084, 0.2), (
-#         107.9169222, 0.21), (108.855741, 0.22), (109.7641117, 0.23), (
-#         110.6442836, 0.24), (111.4982544, 0.25), (112.3278069, 0.26), (
-#         113.1345397, 0.27), (113.9198918, 0.28), (114.6851642, 0.29), (
-#         115.431537, 0.3), (116.1600841, 0.31), (116.8717864, 0.32), (
-#         117.567542, 0.33), (118.2481756, 0.34), (118.9144466, 0.35), (
-#         119.5670557, 0.36), (120.2066512, 0.37), (120.833834, 0.38), (
-#         121.4491624, 0.39), (122.053156, 0.4), (122.6462992, 0.41), (
-#         123.2290448, 0.42), (123.8018162, 0.43), (124.3650101, 0.44), (
-#         124.9189991, 0.45), (125.4641332, 0.46), (126.000742, 0.47), (
-#         126.529136, 0.48), (127.0496083, 0.49), (127.5624356, 0.5), (128.06788, 
-#         0.51), (128.5661893, 0.52), (129.0575987, 0.53), (129.5423312, 0.54), (
-#         130.0205987, 0.55), (130.4926026, 0.56), (130.9585348, 0.57), (
-#         131.4185777, 0.58), (131.8729055, 0.59), (132.3216843, 0.6), (
-#         132.7650726, 0.61), (133.2032221, 0.62), (133.6362775, 0.63), (
-#         134.0643776, 0.64), (134.4876553, 0.65), (134.9062378, 0.66), (
-#         135.3202471, 0.67), (135.7298005, 0.68), (136.1350102, 0.69), (
-#         136.5359844, 0.7), (136.9328269, 0.71), (137.3256375, 0.72), (
-#         137.7145125, 0.73), (138.0995443, 0.74), (138.4808221, 0.75), (
-#         138.8584318, 0.76), (139.2324563, 0.77), (139.6029755, 0.78), (
-#         139.9700666, 0.79), (140.3338041, 0.8), (140.6942601, 0.81), (
-#         141.051504, 0.82), (141.4056032, 0.83), (141.7566227, 0.84), (
-#         142.1046256, 0.85), (142.4496727, 0.86), (142.7918231, 0.87), (
-#         143.131134, 0.88), (143.4676608, 0.89), (143.8014574, 0.9), (
-#         144.1325758, 0.91), (144.4610665, 0.92), (144.7869787, 0.93), (
-#         145.11036, 0.94), (145.4312566, 0.95), (145.7497136, 0.96), (
-#         146.0657745, 0.97), (146.3794819, 0.98), (146.690877, 0.99), (147.0, 
-#         1.0), (147.3068899, 1.01), (147.6115847, 1.02), (147.9141214, 1.03), (
-#         148.214536, 1.04), (148.5128636, 1.05), (148.8091384, 1.06), (
-#         149.1033937, 1.07), (149.3956619, 1.08), (149.6859746, 1.09), (
-#         149.9743627, 1.1), (150.2608563, 1.11), (150.5454847, 1.12), (
-#         150.8282766, 1.13), (151.1092599, 1.14), (151.3884619, 1.15), (
-#         151.6659091, 1.16), (151.9416278, 1.17), (152.2156431, 1.18), (
-#         152.48798, 1.19), (152.7586628, 1.2), (153.027715, 1.21), (153.29516, 
-#         1.22), (153.5610204, 1.23), (153.8253182, 1.24), (154.0880753, 1.25), (
-#         154.3493128, 1.26), (154.6090514, 1.27), (154.8673114, 1.28), (
-#         155.1241128, 1.29), (155.3794749, 1.3), (155.6334168, 1.31), (
-#         155.8859572, 1.32), (156.1371143, 1.33), (156.3869061, 1.34), (
-#         156.63535, 1.35), (156.8824632, 1.36), (157.1282625, 1.37), (
-#         157.3727646, 1.38), (157.6159854, 1.39), (157.857941, 1.4), (
-#         158.0986467, 1.41), (158.338118, 1.42), (158.5763697, 1.43), (
-#         158.8134166, 1.44), (159.049273, 1.45), (159.283953, 1.46), (
-#         159.5174705, 1.47), (159.7498392, 1.48), (159.9810723, 1.49), (
-#         160.211183, 1.5), (160.4401842, 1.51), (160.6680885, 1.52), (
-#         160.8949084, 1.53), (161.120656, 1.54), (161.3453433, 1.55), (
-#         161.568982, 1.56), (161.7915839, 1.57), (162.0131601, 1.58), (
-#         162.233722, 1.59), (162.4532804, 1.6), (162.6718462, 1.61), (162.88943, 
-#         1.62), (163.1060422, 1.63), (163.321693, 1.64), (163.5363926, 1.65), (
-#         163.7501509, 1.66), (163.9629777, 1.67), (164.1748825, 1.68), (
-#         164.3858748, 1.69), (164.5959639, 1.7), (164.8051589, 1.71), (
-#         165.0134688, 1.72), (165.2209025, 1.73), (165.4274688, 1.74), (
-#         165.6331761, 1.75), (165.838033, 1.76), (166.0420477, 1.77), (
-#         166.2452285, 1.78), (166.4475834, 1.79), (166.6491203, 1.8), (
-#         166.8498472, 1.81), (167.0497716, 1.82), (167.2489012, 1.83), (
-#         167.4472434, 1.84), (167.6448057, 1.85), (167.8415953, 1.86), (
-#         168.0376193, 1.87), (168.2328847, 1.88), (168.4273986, 1.89), (
-#         168.6211678, 1.9), (168.814199, 1.91), (169.0064988, 1.92), (
-#         169.1980739, 1.93), (169.3889307, 1.94), (169.5790756, 1.95), (
-#         169.7685148, 1.96), (169.9572546, 1.97), (170.145301, 1.98), (
-#         170.3326602, 1.99), (170.519338, 2.0), (170.7053403, 2.01), (
-#         170.8906729, 2.02), (171.0753416, 2.03), (171.2593518, 2.04), (
-#         171.4427093, 2.05), (171.6254194, 2.06), (171.8074877, 2.07), (
-#         171.9889194, 2.08), (172.1697198, 2.09), (172.349894, 2.1), (
-#         172.5294474, 2.11), (172.7083848, 2.12), (172.8867113, 2.13), (
-#         173.0644319, 2.14), (173.2415515, 2.15), (173.4180747, 2.16), (
-#         173.5940065, 2.17), (173.7693514, 2.18), (173.9441142, 2.19), (
-#         174.1182993, 2.2), (174.2919114, 2.21), (174.4649549, 2.22), (
-#         174.6374341, 2.23), (174.8093536, 2.24), (174.9807175, 2.25), (
-#         175.1515301, 2.26), (175.3217956, 2.27), (175.4915182, 2.28), (
-#         175.6607019, 2.29), (175.8293509, 2.3), (175.9974691, 2.31), (
-#         176.1650605, 2.32), (176.3321289, 2.33), (176.4986784, 2.34), (
-#         176.6647126, 2.35), (176.8302353, 2.36), (176.9952504, 2.37), (
-#         177.1597614, 2.38), (177.323772, 2.39), (177.4872859, 2.4), (
-#         177.6503066, 2.41), (177.8128376, 2.42), (177.9748824, 2.43), (
-#         178.1364444, 2.44), (178.2975271, 2.45), (178.4581339, 2.46), (
-#         178.618268, 2.47), (178.7779327, 2.48), (178.9371314, 2.49), (
-#         179.0958672, 2.5), (179.2541434, 2.51), (179.411963, 2.52), (
-#         179.5693292, 2.53), (179.7262452, 2.54), (179.8827138, 2.55), (
-#         180.0387383, 2.56), (180.1943215, 2.57), (180.3494664, 2.58), (
-#         180.504176, 2.59), (180.6584531, 2.6), (180.8123006, 2.61), (
-#         180.9657213, 2.62), (181.1187181, 2.63), (181.2712937, 2.64), (
-#         181.4234509, 2.65), (181.5751923, 2.66), (181.7265208, 2.67), (
-#         181.8774389, 2.68), (182.0279492, 2.69), (182.1780545, 2.7), (
-#         182.3277572, 2.71), (182.47706, 2.72), (182.6259654, 2.73), (
-#         182.7744758, 2.74), (182.9225938, 2.75), (183.0703218, 2.76), (
-#         183.2176623, 2.77), (183.3646176, 2.78), (183.5111902, 2.79), (
-#         183.6573824, 2.8), (183.8031965, 2.81), (183.948635, 2.82), (
-#         184.0936999, 2.83), (184.2383938, 2.84), (184.3827187, 2.85), (
-#         184.526677, 2.86), (184.6702707, 2.87), (184.8135022, 2.88), (
-#         184.9563736, 2.89), (185.0988871, 2.9), (185.2410446, 2.91), (
-#         185.3828485, 2.92), (185.5243007, 2.93), (185.6654033, 2.94), (
-#         185.8061584, 2.95), (185.946568, 2.96), (186.0866341, 2.97))
-    
-#     # BCs
-#     input_dex.punch_velocity = 10
-#     input_dex.mass_scalling = 5e-6
-
-#     # mesh
-#     input_dex.mesh_size = 5
-
-#     # input dex 2
-#     input_dex_2: InputeDex = copy.deepcopy(input_dex)
-#     input_dex_2.mesh_size = 3
-
-#     # input dex 3
-#     input_dex_3: InputeDex = copy.deepcopy(input_dex)
-#     input_dex_3.mesh_size = 2
-
-#     # input dex 4
-#     input_dex_4: InputeDex = copy.deepcopy(input_dex)
-#     input_dex_4.mesh_size = 0.5
-
-#     # input dex 5
-#     input_dex_5: InputeDex = copy.deepcopy(input_dex)
-#     input_dex_5.mesh_size = 4
-
-#     input_dex_set = [input_dex_3]
-
-#     main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\batch_temp103"
-#     # main_sim_output =  r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92"
-
-#     min_thickness, rmse, max_deviation = run_batch_sim(input_dex_set, main_sim_output)
-
-
 
 def main():
 
@@ -1785,204 +2062,212 @@ def main():
     input_dex.solver_type = SolverType.STANDARD
     
     input_dex.all_part_rotation = 90
+    input_dex.integration_points = 5
+
+    input_dex.trim_depth = 0
 
     # ideal part dimensions
-    input_dex.ideal_cup_radius = 20
-    input_dex.ideal_cup_height = 10
+    input_dex.ideal_cup_radius = 33/2
+    input_dex.ideal_cup_height = 20
     input_dex.ideal_cup_profile_radius = 5
 
     # blank inputs
-    input_dex.blank_radius = 55
-    input_dex.blank_thickness = 1.1
+    input_dex.blank_radius = 30
+    input_dex.blank_thickness = 1
     input_dex.integration_points = 15
 
     # punch inputs
     input_dex.punch_profile_radius = 5 # 5
-    input_dex.punch_min_radius = 20
+    input_dex.punch_min_radius = 33/2
 
     # die inputs
-    input_dex.die_profile_radius = 6.5
-    input_dex.die_min_radius = 22
-    input_dex.die_max_radius = input_dex.blank_radius + 10
+    input_dex.die_profile_radius = 5
+    input_dex.die_min_radius = 35.3/2
+    input_dex.die_max_radius = 40
 
     # blank holder inputs
     input_dex.blank_holder_height = 10
-    input_dex.blank_holder_profile_radius = 6.5
-    input_dex.blank_holder_min_radius = 22
-    input_dex.blank_holder_max_radius = input_dex.blank_radius + 10
-    input_dex.blank_holder_die_gap = input_dex.blank_thickness + 0.5
+    input_dex.blank_holder_profile_radius = 0.1
+    input_dex.blank_holder_min_radius = 33.6/2
+    input_dex.blank_holder_max_radius = 70/2
+    input_dex.blank_holder_die_gap = input_dex.blank_thickness
 
     # punch
     input_dex.cup_design_height = 10
-    input_dex.punch_depth = 20
-    input_dex.die_height = input_dex.punch_depth + 5
+    input_dex.punch_depth = 35
+    input_dex.die_height = 40
 
     # material inputs
-    input_dex.blank_material_name = "AA1050"
+    input_dex.blank_material_name = "AA5754-O"
     input_dex.density = 2.7e-06 
-    input_dex.youngs_modulus = 70000.0
+    input_dex.youngs_modulus = 68000.0
     input_dex.posissons_ratio = 0.33
-    input_dex.plastic_material_data = ((35.0, 0.0), (66.56588883, 0.01), (73.19453891, 0.02), (
-        77.6998518, 0.03), (81.21516632, 0.04), (84.1399572, 0.05), (
-        86.66656829, 0.06), (88.90387465, 0.07), (90.92007807, 0.08), (
-        92.76100124, 0.09), (94.45905775, 0.1), (96.03810066, 0.11), (
-        97.51624224, 0.12), (98.90759062, 0.13), (100.2233697, 0.14), (
-        101.4726693, 0.15), (102.6629639, 0.16), (103.8004812, 0.17), (
-        104.8904701, 0.18), (105.9373994, 0.19), (106.9451084, 0.2), (
-        107.9169222, 0.21), (108.855741, 0.22), (109.7641117, 0.23), (
-        110.6442836, 0.24), (111.4982544, 0.25), (112.3278069, 0.26), (
-        113.1345397, 0.27), (113.9198918, 0.28), (114.6851642, 0.29), (
-        115.431537, 0.3), (116.1600841, 0.31), (116.8717864, 0.32), (
-        117.567542, 0.33), (118.2481756, 0.34), (118.9144466, 0.35), (
-        119.5670557, 0.36), (120.2066512, 0.37), (120.833834, 0.38), (
-        121.4491624, 0.39), (122.053156, 0.4), (122.6462992, 0.41), (
-        123.2290448, 0.42), (123.8018162, 0.43), (124.3650101, 0.44), (
-        124.9189991, 0.45), (125.4641332, 0.46), (126.000742, 0.47), (
-        126.529136, 0.48), (127.0496083, 0.49), (127.5624356, 0.5), (128.06788, 
-        0.51), (128.5661893, 0.52), (129.0575987, 0.53), (129.5423312, 0.54), (
-        130.0205987, 0.55), (130.4926026, 0.56), (130.9585348, 0.57), (
-        131.4185777, 0.58), (131.8729055, 0.59), (132.3216843, 0.6), (
-        132.7650726, 0.61), (133.2032221, 0.62), (133.6362775, 0.63), (
-        134.0643776, 0.64), (134.4876553, 0.65), (134.9062378, 0.66), (
-        135.3202471, 0.67), (135.7298005, 0.68), (136.1350102, 0.69), (
-        136.5359844, 0.7), (136.9328269, 0.71), (137.3256375, 0.72), (
-        137.7145125, 0.73), (138.0995443, 0.74), (138.4808221, 0.75), (
-        138.8584318, 0.76), (139.2324563, 0.77), (139.6029755, 0.78), (
-        139.9700666, 0.79), (140.3338041, 0.8), (140.6942601, 0.81), (
-        141.051504, 0.82), (141.4056032, 0.83), (141.7566227, 0.84), (
-        142.1046256, 0.85), (142.4496727, 0.86), (142.7918231, 0.87), (
-        143.131134, 0.88), (143.4676608, 0.89), (143.8014574, 0.9), (
-        144.1325758, 0.91), (144.4610665, 0.92), (144.7869787, 0.93), (
-        145.11036, 0.94), (145.4312566, 0.95), (145.7497136, 0.96), (
-        146.0657745, 0.97), (146.3794819, 0.98), (146.690877, 0.99), (147.0, 
-        1.0), (147.3068899, 1.01), (147.6115847, 1.02), (147.9141214, 1.03), (
-        148.214536, 1.04), (148.5128636, 1.05), (148.8091384, 1.06), (
-        149.1033937, 1.07), (149.3956619, 1.08), (149.6859746, 1.09), (
-        149.9743627, 1.1), (150.2608563, 1.11), (150.5454847, 1.12), (
-        150.8282766, 1.13), (151.1092599, 1.14), (151.3884619, 1.15), (
-        151.6659091, 1.16), (151.9416278, 1.17), (152.2156431, 1.18), (
-        152.48798, 1.19), (152.7586628, 1.2), (153.027715, 1.21), (153.29516, 
-        1.22), (153.5610204, 1.23), (153.8253182, 1.24), (154.0880753, 1.25), (
-        154.3493128, 1.26), (154.6090514, 1.27), (154.8673114, 1.28), (
-        155.1241128, 1.29), (155.3794749, 1.3), (155.6334168, 1.31), (
-        155.8859572, 1.32), (156.1371143, 1.33), (156.3869061, 1.34), (
-        156.63535, 1.35), (156.8824632, 1.36), (157.1282625, 1.37), (
-        157.3727646, 1.38), (157.6159854, 1.39), (157.857941, 1.4), (
-        158.0986467, 1.41), (158.338118, 1.42), (158.5763697, 1.43), (
-        158.8134166, 1.44), (159.049273, 1.45), (159.283953, 1.46), (
-        159.5174705, 1.47), (159.7498392, 1.48), (159.9810723, 1.49), (
-        160.211183, 1.5), (160.4401842, 1.51), (160.6680885, 1.52), (
-        160.8949084, 1.53), (161.120656, 1.54), (161.3453433, 1.55), (
-        161.568982, 1.56), (161.7915839, 1.57), (162.0131601, 1.58), (
-        162.233722, 1.59), (162.4532804, 1.6), (162.6718462, 1.61), (162.88943, 
-        1.62), (163.1060422, 1.63), (163.321693, 1.64), (163.5363926, 1.65), (
-        163.7501509, 1.66), (163.9629777, 1.67), (164.1748825, 1.68), (
-        164.3858748, 1.69), (164.5959639, 1.7), (164.8051589, 1.71), (
-        165.0134688, 1.72), (165.2209025, 1.73), (165.4274688, 1.74), (
-        165.6331761, 1.75), (165.838033, 1.76), (166.0420477, 1.77), (
-        166.2452285, 1.78), (166.4475834, 1.79), (166.6491203, 1.8), (
-        166.8498472, 1.81), (167.0497716, 1.82), (167.2489012, 1.83), (
-        167.4472434, 1.84), (167.6448057, 1.85), (167.8415953, 1.86), (
-        168.0376193, 1.87), (168.2328847, 1.88), (168.4273986, 1.89), (
-        168.6211678, 1.9), (168.814199, 1.91), (169.0064988, 1.92), (
-        169.1980739, 1.93), (169.3889307, 1.94), (169.5790756, 1.95), (
-        169.7685148, 1.96), (169.9572546, 1.97), (170.145301, 1.98), (
-        170.3326602, 1.99), (170.519338, 2.0), (170.7053403, 2.01), (
-        170.8906729, 2.02), (171.0753416, 2.03), (171.2593518, 2.04), (
-        171.4427093, 2.05), (171.6254194, 2.06), (171.8074877, 2.07), (
-        171.9889194, 2.08), (172.1697198, 2.09), (172.349894, 2.1), (
-        172.5294474, 2.11), (172.7083848, 2.12), (172.8867113, 2.13), (
-        173.0644319, 2.14), (173.2415515, 2.15), (173.4180747, 2.16), (
-        173.5940065, 2.17), (173.7693514, 2.18), (173.9441142, 2.19), (
-        174.1182993, 2.2), (174.2919114, 2.21), (174.4649549, 2.22), (
-        174.6374341, 2.23), (174.8093536, 2.24), (174.9807175, 2.25), (
-        175.1515301, 2.26), (175.3217956, 2.27), (175.4915182, 2.28), (
-        175.6607019, 2.29), (175.8293509, 2.3), (175.9974691, 2.31), (
-        176.1650605, 2.32), (176.3321289, 2.33), (176.4986784, 2.34), (
-        176.6647126, 2.35), (176.8302353, 2.36), (176.9952504, 2.37), (
-        177.1597614, 2.38), (177.323772, 2.39), (177.4872859, 2.4), (
-        177.6503066, 2.41), (177.8128376, 2.42), (177.9748824, 2.43), (
-        178.1364444, 2.44), (178.2975271, 2.45), (178.4581339, 2.46), (
-        178.618268, 2.47), (178.7779327, 2.48), (178.9371314, 2.49), (
-        179.0958672, 2.5), (179.2541434, 2.51), (179.411963, 2.52), (
-        179.5693292, 2.53), (179.7262452, 2.54), (179.8827138, 2.55), (
-        180.0387383, 2.56), (180.1943215, 2.57), (180.3494664, 2.58), (
-        180.504176, 2.59), (180.6584531, 2.6), (180.8123006, 2.61), (
-        180.9657213, 2.62), (181.1187181, 2.63), (181.2712937, 2.64), (
-        181.4234509, 2.65), (181.5751923, 2.66), (181.7265208, 2.67), (
-        181.8774389, 2.68), (182.0279492, 2.69), (182.1780545, 2.7), (
-        182.3277572, 2.71), (182.47706, 2.72), (182.6259654, 2.73), (
-        182.7744758, 2.74), (182.9225938, 2.75), (183.0703218, 2.76), (
-        183.2176623, 2.77), (183.3646176, 2.78), (183.5111902, 2.79), (
-        183.6573824, 2.8), (183.8031965, 2.81), (183.948635, 2.82), (
-        184.0936999, 2.83), (184.2383938, 2.84), (184.3827187, 2.85), (
-        184.526677, 2.86), (184.6702707, 2.87), (184.8135022, 2.88), (
-        184.9563736, 2.89), (185.0988871, 2.9), (185.2410446, 2.91), (
-        185.3828485, 2.92), (185.5243007, 2.93), (185.6654033, 2.94), (
-        185.8061584, 2.95), (185.946568, 2.96), (186.0866341, 2.97))
+    input_dex.plastic_material_data = (
+        (91.74, 0.0), (149.8284957, 0.02020202), (184.0636139, 0.04040404), (
+        208.8813246, 0.060606061), (227.7563027, 0.080808081), (242.4816409, 
+        0.101010101), (254.160565, 0.121212121), (263.5336322, 0.141414141), (
+        271.1246064, 0.161616162), (277.3170581, 0.181818182), (282.3989825, 
+        0.202020202), (286.590712, 0.222222222), (290.0633061, 0.242424242), (
+        292.9511489, 0.262626263), (295.3608473, 0.282828283), (297.3776686, 
+        0.303030303), (299.0702914, 0.323232323), (300.4943701, 0.343434343), (
+        301.6952452, 0.363636364), (302.7100293, 0.383838384), (303.5692279, 
+        0.404040404), (304.2980115, 0.424242424), (304.9172192, 0.444444444), (
+        305.4441588, 0.464646465), (305.8932459, 0.484848485), (306.2765196, 
+        0.505050505), (306.604058, 0.525252525), (306.8843178, 0.545454545), (
+        307.1244092, 0.565656566), (307.3303228, 0.585858586), (307.5071151, 
+        0.606060606), (307.6590614, 0.626262626), (307.7897827, 0.646464646), (
+        307.9023503, 0.666666667), (307.9993734, 0.686868687), (308.0830718, 
+        0.707070707), (308.1553359, 0.727272727), (308.2177785, 0.747474747), (
+        308.2717764, 0.767676768), (308.318507, 0.787878788), (308.3589778, 
+        0.808080808), (308.394052, 0.828282828), (308.4244699, 0.848484848), (
+        308.4508671, 0.868686869), (308.4737898, 0.888888889), (308.4937077, 
+        0.909090909), (308.5110251, 0.929292929), (308.5260903, 0.949494949), (
+        308.5392038, 0.96969697), (308.5506247, 0.98989899), (308.560577, 
+        1.01010101), (308.5692539, 1.03030303), (308.5768228, 1.050505051), (
+        308.5834286, 1.070707071), (308.5891965, 1.090909091), (308.5942353, 
+        1.111111111), (308.5986392, 1.131313131), (308.6024899, 1.151515152), (
+        308.6058585, 1.171717172), (308.6088065, 1.191919192), (308.6113876, 
+        1.212121212), (308.6136483, 1.232323232), (308.6156294, 1.252525253), (
+        308.6173659, 1.272727273), (308.6188888, 1.292929293), (308.6202248, 
+        1.313131313), (308.6213974, 1.333333333), (308.6224267, 1.353535354), (
+        308.6233308, 1.373737374), (308.6241251, 1.393939394), (308.6248232, 
+        1.414141414), (308.625437, 1.434343434), (308.6259767, 1.454545455), (
+        308.6264516, 1.474747475), (308.6268695, 1.494949495), (308.6272374, 
+        1.515151515), (308.6275614, 1.535353535), (308.6278468, 1.555555556), (
+        308.6280983, 1.575757576), (308.6283199, 1.595959596), (308.6285154, 
+        1.616161616), (308.6286877, 1.636363636), (308.6288397, 1.656565657), (
+        308.6289739, 1.676767677), (308.6290923, 1.696969697), (308.6291969, 
+        1.717171717), (308.6292892, 1.737373737), (308.6293708, 1.757575758), (
+        308.6294429, 1.777777778), (308.6295066, 1.797979798), (308.6295629, 
+        1.818181818), (308.6296127, 1.838383838), (308.6296568, 1.858585859), (
+        308.6296958, 1.878787879), (308.6297302, 1.898989899), (308.6297608, 
+        1.919191919), (308.6297878, 1.939393939), (308.6298117, 1.95959596), (
+        308.6298329, 1.97979798), (308.6298517, 2.0)
+        )
     
     # BCs
-    input_dex.punch_velocity = 15
+    input_dex.punch_velocity = 1.1
     input_dex.mass_scalling = 5e-6
 
-    input_dex.friction_coefficient = 0.15
+    input_dex.friction_coefficient = 0.09
+    input_dex.BHF = 6000 / 4
 
     # mesh
-    input_dex.mesh_size = 2
-    input_dex.local_mesh_size = 0.75
+    input_dex.mesh_size = 5
+    input_dex.local_mesh_size = 5 * 0.75
 
     # input dex 2
     input_dex_2: InputeDex = copy.deepcopy(input_dex)
-    input_dex_2.mesh_size = 3
+    input_dex_2.mesh_size = 4
+    input_dex_2.local_mesh_size = 4 * 0.75
 
     # input dex 3
     input_dex_3: InputeDex = copy.deepcopy(input_dex)
-    input_dex_3.mesh_size = 2
+    input_dex_3.mesh_size = 3
+    input_dex_3.local_mesh_size = 3 * 0.75
 
     # input dex 4
     input_dex_4: InputeDex = copy.deepcopy(input_dex)
-    input_dex_4.mesh_size = 1
+    input_dex_4.mesh_size = 2
+    input_dex_4.local_mesh_size = 2 * 0.75
 
     # input dex 5
     input_dex_5: InputeDex = copy.deepcopy(input_dex)
-    input_dex_5.mesh_size = 0.75
+    input_dex_5.mesh_size = 1
+    input_dex_5.local_mesh_size = 1 * 0.75
 
-    # input dex 5
+    # input dex 6
     input_dex_6: InputeDex = copy.deepcopy(input_dex)
-    input_dex_6.mesh_size = 0.3
+    input_dex_6.mesh_size = 0.75
+    input_dex_6.local_mesh_size = 0.75 * 0.75
+
+    # input dex 7
+    input_dex_7: InputeDex = copy.deepcopy(input_dex)
+    input_dex_7.mesh_size = 0.625
+    input_dex_7.local_mesh_size = 0.625 * 0.75
+
+    # input dex 8
+    input_dex_8: InputeDex = copy.deepcopy(input_dex)
+    input_dex_8.mesh_size = 0.5
+    input_dex_8.local_mesh_size = 0.5 * 0.75
+
+    # input dex 9
+    input_dex_9: InputeDex = copy.deepcopy(input_dex)
+    input_dex_9.mesh_size = 5
+    input_dex_9.local_mesh_size = 5 * 0.5
+
+    # input dex 10
+    input_dex_10: InputeDex = copy.deepcopy(input_dex)
+    input_dex_10.mesh_size = 4
+    input_dex_10.local_mesh_size = 4 * 0.5
+
+    # input dex 11
+    input_dex_11: InputeDex = copy.deepcopy(input_dex)
+    input_dex_11.mesh_size = 3
+    input_dex_11.local_mesh_size = 3 * 0.5
+
+    # input dex 12
+    input_dex_12: InputeDex = copy.deepcopy(input_dex)
+    input_dex_12.mesh_size = 2
+    input_dex_12.local_mesh_size = 2 * 0.5
+
+    # input dex 13
+    input_dex_13: InputeDex = copy.deepcopy(input_dex)
+    input_dex_13.mesh_size = 5
+    input_dex_13.local_mesh_size = 5 * 0.333
+
+    # input dex 14
+    input_dex_14: InputeDex = copy.deepcopy(input_dex)
+    input_dex_14.mesh_size = 4
+    input_dex_14.local_mesh_size = 4 * 0.333
+
+    # input dex 15
+    input_dex_15: InputeDex = copy.deepcopy(input_dex)
+    input_dex_15.mesh_size = 3
+    input_dex_15.local_mesh_size = 3 * 0.333
+
+    # input dex 16
+    input_dex_16: InputeDex = copy.deepcopy(input_dex)
+    input_dex_16.mesh_size = 2
+    input_dex_16.local_mesh_size = 2 * 0.333
+
+    # input dex 12
+    input_dex_17: InputeDex = copy.deepcopy(input_dex)
+    input_dex_17.mesh_size = 1
+    input_dex_17.local_mesh_size = 1 * 0.5
+
+    # input dex 12
+    input_dex_18: InputeDex = copy.deepcopy(input_dex)
+    input_dex_18.mesh_size = 1
+    input_dex_18.local_mesh_size = 1 * 0.33
 
     input_dex_set = [input_dex]
+    # input_dex_set = [input_dex, input_dex_2, input_dex_3]
+    # input_dex_set = [input_dex, input_dex_2, input_dex_3, input_dex_4, input_dex_5, input_dex_6, input_dex_7, input_dex_8, input_dex_9, input_dex_10, input_dex_11, input_dex_12,
+    #                  input_dex_13, input_dex_14, input_dex_15, input_dex_16, input_dex_17, input_dex_18]
 
-    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp140"
+    main_sim_output =  r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp317"
     # main_sim_output =  r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp92"
 
     run_batch_sim(input_dex_set, main_sim_output)
+
 
 if __name__ == "__main__":
     
     run_cup()
 
-    # cup_baysien_optimisation()
-
     # main()
 
-    # create_mesh(SolverType.STANDARD, 2)
+
+    # cup height post pro
+    # sims = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+    # sims = [2] # 294
+    # sims = [1] # 295
+    # for sim in sims:
+    #     os.chdir(rf"C:\Users\kam97\OneDrive - University of Bath\Documents\build\build_temp295\sim_{sim}")
+    #     compare_meshes()
 
 
-    # export_final_node_positions(41.5, 30)
-    # os.chdir(r"C:\Users\Kadmiel McForrester\OneDrive - University of Bath\Documents\build\batch_temp103\sim_1")
-    # compare_meshes()
-    
-    # post_pro_strain_eq()
-    # post_pro_misses_stress()
-    # post_pro_spring_back_dev()
-    # plt.close('all')
-    # post_pro_thickness()
-    # plot_thickness_variation()
-    # post_pro_punch_reaction()
-    # post_pro_energy()
-    # plot_energy_data()
-    # plot_rf_data()
-    # energy_check()
-    # post_pro_strain()
-    # plot_strains()
+    # notes
+# add retun back to run batch for optimisation loop
+# fix the non completed simulations
