@@ -1,0 +1,3 @@
+shape op 2D {'target': np.float64(-0.2722709372748772), 'params': {'punch_min_radius': np.float64(0.38638150982942665), 'punch_profile_radius': np.float64(0.6209416396550275)}}
+
+height op 1D {'target': np.float64(-0.0003070542448035951), 'params': {'blank_radius': np.float64(30.321158122674316)}}
