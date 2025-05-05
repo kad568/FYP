@@ -1353,7 +1353,7 @@ def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
 
         run_sim(sim)
         plt.close('all')
-        min_thickness = post_pro_thickness()
+        min_thickness, max_thickness = post_pro_thickness()
         plot_thickness_variation()
         post_pro_punch_reaction()
         post_pro_energy()
@@ -1372,7 +1372,7 @@ def run_batch_sim(batch: list[InputeDex], main_sim_path: str):
         rmse = compare_meshes()
 
         # ADD BACK FOR THE BO
-        return min_thickness, rmse, height_diplacement
+        return max_thickness, min_thickness, rmse, height_diplacement
 
 def compare_meshes():
 
@@ -1453,6 +1453,8 @@ def post_pro_thickness():
 
     min_thickness = 10
 
+    max_thickness = 0
+
     output_file = os.path.join(cwd, "thickness_results.csv")
     with open(output_file, "w") as f:
         f.write("ElementID,SectionThickness,RadialDistance\n")  # CSV header
@@ -1464,6 +1466,9 @@ def post_pro_thickness():
 
             if thickness < min_thickness:
                 min_thickness = thickness
+            
+            if thickness > max_thickness:
+                max_thickness = thickness
 
             X = coord[0]
             Y = coord[1]
@@ -1475,7 +1480,7 @@ def post_pro_thickness():
 
     odb.close()
 
-    return min_thickness
+    return min_thickness, max_thickness
 
 def post_pro_punch_reaction():
 
@@ -1931,12 +1936,12 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     input_dex.blank_thickness = 1
 
     # punch inputs
-    punch_profile_radius = 5
-    punch_min_radius = 33/2
+    input_dex.punch_profile_radius = 4.16
+    input_dex.punch_min_radius = 17.1
 
     # die inputs
     input_dex.die_profile_radius = die_profile_radius
-    input_dex.die_min_radius = punch_min_radius + die_punch_gap
+    input_dex.die_min_radius = input_dex.punch_min_radius + die_punch_gap
     input_dex.die_max_radius = input_dex.blank_radius + 15
 
     # blank holder inputs
@@ -2022,7 +2027,7 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
     
     main_sim_output = get_sim_out_path(main_sim_output)
 
-    min_thickness, rmse, height_difference = run_batch_sim(input_dex_set, main_sim_output)
+    max_thickness, min_thickness, rmse, height_difference = run_batch_sim(input_dex_set, main_sim_output)
 
     with open(fr"{main_sim_output}\sim_1\sim_status.txt", "r") as f:
         sim_status = f.read().strip()
@@ -2032,7 +2037,8 @@ def cylindrical_cup_function(ideal_cup_height, ideal_cup_radius, ideal_cup_profi
         rmse = None
         height_difference = None
 
-    return min_thickness, rmse, height_difference
+
+    return max_thickness, min_thickness, rmse, height_difference
 
 
 def run_cup():
@@ -2055,20 +2061,20 @@ def run_cup():
         return x * (upper - lower) + lower
     
     BHF = destandardize(BHF, 5000, 11000)
-    friction = destandardize(friction, 0.05, 0.3)
-    die_punch_gap = destandardize(die_punch_gap, 1.05, 1.5)
+    die_profile_radius = destandardize(die_profile_radius, 3, 7)
+    # die_punch_gap = destandardize(die_punch_gap, 1.05, 1.5)
 
     # Run simulation
-    min_thickness, rmse, _ = cylindrical_cup_function(
+    max_thickness, min_thickness, rmse, _ = cylindrical_cup_function(
         ideal_height, ideal_radius, ideal_profile_radius, 
         punch_depth, BHF, friction,
         die_profile_radius, die_punch_gap, blank_radius
     )
 
     if min_thickness == None:
-        data_out = {"min_thickness": None}
+        data_out = {"min_thickness": None, "max_thickness": max_thickness}
     else:
-        data_out = {"min_thickness": -abs(min_thickness)}
+        data_out = {"min_thickness": min_thickness, "max_thickness": max_thickness}
     
     with open(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2\sim_output.json", "w") as f:
         json.dump(data_out, f)

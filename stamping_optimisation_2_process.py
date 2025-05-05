@@ -6,12 +6,15 @@ import pickle  # Import pickle to save the model
 import matplotlib.pyplot as plt
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern, RBF, RationalQuadratic, WhiteKernel, ConstantKernel
+from scipy.optimize import NonlinearConstraint
+from skopt.space import Real, Space
+from skopt.sampler import Lhs
 
 # take case from the sim as a test case
 
 # use simular geometry to ensure convergence
 
-def cup_function(BHF, friction, punch_die_gap):
+def cup_function(BHF, die_profile_radius):
 
     # target geometry
     ideal_height = 20
@@ -19,8 +22,11 @@ def cup_function(BHF, friction, punch_die_gap):
     ideal_profile_radius = 5
     blank_radius = 30.321158122674316
 
-    die_profile_radius = 5
+    punch_die_gap = 1.15
+
+
     punch_depth = 35
+    friction = 0.09
 
     abaqus_command = [
         r"C:\SIMULIA\Commands\abaqus.bat", "cae", "noGUI=stampy_process.py", "--",
@@ -42,10 +48,11 @@ def cup_function(BHF, friction, punch_die_gap):
             data_out = json.load(f)
 
         min_thickness = data_out["min_thickness"]
+        max_thickness = data_out["max_thickness"]
 
-        if min_thickness == None:
+        if (min_thickness == None) or (max_thickness > 1.2):
             min_thickness = 0
-        print(f"Simulation Complete, min_thickness: {"min_thickness"}")
+        print(f"Simulation Complete, min_thickness: {min_thickness}")
         return min_thickness
 
     except Exception as exc:
@@ -68,15 +75,15 @@ def main():
     # Bounded region of parameter space
     pbounds = {
         "BHF": (0, 1),
-        "friction": (0, 1),
-        "punch_die_gap": (0, 1)
+        # "punch_die_gap": (0, 1),
+        "die_profile_radius": (0, 1),
     }
 
-    acquisition_function = acquisition.ExpectedImprovement(xi=0.01)
+    acquisition_function = acquisition.ExpectedImprovement(xi=0.0)
 
-    kernel = ConstantKernel(1.0, (0.1, 10)) * RationalQuadratic(length_scale=1.0, alpha=1.0, 
-                                        length_scale_bounds=(1e-2, 10), alpha_bounds=(1e-2, 10)) \
-                                        + WhiteKernel(noise_level=1e-8, noise_level_bounds=(1e-15, 1e-3))
+    kernel = ConstantKernel(1.0, (0.1, 10)) * Matern(length_scale=[1.0, 1.0], nu=2.5, length_scale_bounds=[(1e-2, 10.0), (1e-2, 10.0)]) \
+                   + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-3))
+
     
     gp = GaussianProcessRegressor(alpha=1e-06,
                                     kernel=kernel,
@@ -98,14 +105,26 @@ def main():
 
     optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
 
-    optimizer.maximize(init_points=15, n_iter=65)
+    # 5) use scikit-optimize’s LHS to generate n_initial “init” points
+    space = Space([
+        Real(*pbounds["BHF"], name="BHF"),
+        Real(*pbounds["die_profile_radius"],    name="die_profile_radius"),
+    ])
+
+    lhs = Lhs(lhs_type="classic", criterion="maximin")
+    n_initial = 20
+    lhs_points = lhs.generate(space.dimensions, n_samples=n_initial, random_state=0)
+
+    # 6) register each LHS point with the BO engine
+    for x in lhs_points:
+        params = {"BHF": x[0], "die_profile_radius": x[1]}
+        y = cup_function(**params)
+        optimizer.register(params=params, target=y)
+
+
+    optimizer.maximize(init_points=0, n_iter=60)
 
     save_model_callback(optimizer)
-
-    # op_path = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3"
-
-    # optimisation convergence plot
-    # plot_convergence(op_path)
 
 
 
@@ -301,7 +320,7 @@ def plot_gp_default():
     
     # Create the figure with two subplots
     fig = plt.figure(figsize=(16, 10))
-    steps = len(optimizer._space.res)
+    steps = len(optimizer.res)
     fig.suptitle('GP Prediction and Acquisition Utility After {} Steps'.format(steps),
                  fontsize=15)
     
@@ -310,8 +329,8 @@ def plot_gp_default():
     ax_acq = plt.subplot(gs[1])
     
     # Extract observed x and target values from the optimizer results
-    x_obs = np.array([[res["params"][independant_var]] for res in optimizer._space.res])
-    y_obs = np.array([res["target"] for res in optimizer._space.res])
+    x_obs = np.array([[res["params"][independant_var]] for res in optimizer.res])
+    y_obs = np.array([res["target"] for res in optimizer.res])
     
     # Get GP predictions (mean and standard deviation) on the grid
     mu, sigma = posterior(optimizer, grid)
@@ -366,7 +385,7 @@ def plot_sampling_history():
 
 
     # Scatter plot of sample locations vs. iteration number
-    x_obs = [res["params"][independant_var] for res in optimizer._space.res]
+    x_obs = [res["params"][independant_var] for res in optimizer.res]
     iterations = np.arange(1, len(x_obs) + 1)
     plt.figure(figsize=(10, 4))
     plt.scatter(iterations, x_obs, color='green')
@@ -440,7 +459,7 @@ def plot_convergence_2d():
       - Best-so-far target value vs. iteration number.
       - Best-so-far target value vs. elapsed time.
     """
-    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3")
+    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2")
     log_file = "op_logs.log"
 
     iterations = []
@@ -499,7 +518,7 @@ def plot_gp_2d():
     R1, R2 = np.meshgrid(r1, r2)
     grid = np.vstack([R1.ravel(), R2.ravel()]).T
 
-    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3")
+    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2")
     op_path = "bayes_model_norm.pkl"
     with open(op_path, "rb") as f:
         optimizer = pickle.load(f)
@@ -507,8 +526,8 @@ def plot_gp_2d():
     # Extract observed sample locations and targets
     # X-axis: punch_profile_radius, Y-axis: punch_min_radius.
     x_obs = np.array([[res["params"]["punch_profile_radius"], res["params"]["punch_min_radius"]] 
-                      for res in optimizer._space.res])
-    y_obs = np.array([res["target"] for res in optimizer._space.res])
+                      for res in optimizer.res])
+    y_obs = np.array([res["target"] for res in optimizer.res])
 
     # Get GP predictions: mean and standard deviation on the grid.
     mu, sigma = optimizer._gp.predict(grid, return_std=True)
@@ -536,7 +555,7 @@ def plot_gp_2d():
     ax2.set_ylabel('Punch Min Radius')
     ax2.legend()
 
-    plt.suptitle('GP Prediction and Uncertainty After {} Steps'.format(len(optimizer._space.res)), fontsize=16)
+    plt.suptitle('GP Prediction and Uncertainty After {} Steps'.format(len(optimizer.res)), fontsize=16)
     plt.savefig("gp_2d.png")
 
 
@@ -551,7 +570,7 @@ def plot_acq_2d():
     R1, R2 = np.meshgrid(r1, r2)
     grid = np.vstack([R1.ravel(), R2.ravel()]).T
 
-    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3")
+    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2")
     op_path = "bayes_model_norm.pkl"
     with open(op_path, "rb") as f:
         optimizer = pickle.load(f)
@@ -574,7 +593,7 @@ def plot_acq_2d():
 
     # Overlay observed sample points.
     x_obs = np.array([[res["params"]["punch_profile_radius"], res["params"]["punch_min_radius"]] 
-                      for res in optimizer._space.res])
+                      for res in optimizer.res])
     ax.scatter(x_obs[:, 0], x_obs[:, 1], color='red', marker='D', s=50, label='Observations')
 
     ax.set_xlabel('Punch Profile Radius')
@@ -590,13 +609,13 @@ def plot_sampling_history_2d():
     Creates a 2D scatter plot of the sample locations over the design space.
     Points are color-coded by iteration number to visualize the sampling history.
     """
-    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3")
+    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2")
     op_path = "bayes_model_norm.pkl"
     with open(op_path, "rb") as f:
         optimizer = pickle.load(f)
 
     x_obs = np.array([[res["params"]["punch_profile_radius"], res["params"]["punch_min_radius"]] 
-                      for res in optimizer._space.res])
+                      for res in optimizer.res])
     iterations = np.arange(1, len(x_obs) + 1)
 
     plt.figure(figsize=(8, 6))
@@ -619,17 +638,17 @@ def plot_sampling_history_rmse_2d():
     import numpy as np
     import matplotlib.pyplot as plt
 
-    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3")
+    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2")
     op_path = "bayes_model_norm.pkl"
     with open(op_path, "rb") as f:
         optimizer = pickle.load(f)
 
     # Extract the design parameters from the optimizer results
     x_obs = np.array([[res["params"]["punch_profile_radius"], res["params"]["punch_min_radius"]] 
-                      for res in optimizer._space.res])
+                      for res in optimizer.res])
     
     # Since target is defined as -RMSE, we take the absolute value to get the actual RMSE
-    rmse_values = np.array([abs(res["target"]) for res in optimizer._space.res])
+    rmse_values = np.array([abs(res["target"]) for res in optimizer.res])
     
     plt.figure(figsize=(8, 6))
     sc = plt.scatter(x_obs[:, 0], x_obs[:, 1], c=rmse_values, cmap='viridis', s=80)
@@ -643,7 +662,7 @@ def plot_sampling_history_rmse_2d():
 
 def op_gp():
 
-    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3")
+    os.chdir(r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2")
     op_path = "bayes_model.pkl"
 
     with open(op_path, "rb") as f:
@@ -722,7 +741,7 @@ def op_gp():
     # Replace the optimizer's results with the new normalized results
     optimizer._space.res = new_res
 
-    model_path = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\stamping_op_build3\bayes_model_norm.pkl"
+    model_path = r"C:\Users\kam97\OneDrive - University of Bath\Documents\build\process_optimisation2\bayes_model_norm.pkl"
     
     with open(model_path, "wb") as f:
         pickle.dump(optimizer, f)
@@ -744,7 +763,7 @@ def op_gp():
 if __name__ == "__main__":
     
 
-    # main()
+    main()
 
 
 
@@ -763,13 +782,13 @@ if __name__ == "__main__":
 
     # Example usage:
     # Test UCB with kappa=1.0
-    plot_acq_2d(acq_kind="ucb", kappa=1.0)
+    # plot_acq_2d(acq_kind="ucb", kappa=1.0)
 
-    # Test EI with xi=0.01
-    plot_acq_2d(acq_kind="ei", xi=0.01)
+    # # Test EI with xi=0.01
+    # plot_acq_2d(acq_kind="ei", xi=0.01)
 
-    # Test PI with xi=0.01 (or another value if you prefer)
-    plot_acq_2d(acq_kind="poi", xi=0.01)
+    # # Test PI with xi=0.01 (or another value if you prefer)
+    # plot_acq_2d(acq_kind="poi", xi=0.01)
 
 
 
